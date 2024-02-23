@@ -90,7 +90,7 @@ class IQTransformerEncoder(TransformerLayerSequence):
             self.spatial_alignment = MLN(8)
 
         self.depth_start=depth_start # 1
-        self.depth_range=self.position_range[3] - self.depth_start
+        self.depth_range=position_range[3] - self.depth_start
         if self.use_pos_embed3d:
             self.featurized_pe = SELayer_Linear(self.embed_dims)
         if self.use_pos_embed3d:
@@ -104,7 +104,6 @@ class IQTransformerEncoder(TransformerLayerSequence):
             assert reference_point_generator is not None
             reference_point_generator['mlvl_feats_format'] = self.mlvl_feats_formats
             self.reference_points = build_plugin_layer(reference_point_generator)[1]
-        self.created_reference_points=False
         
         self.use_mask_predictor = mask_predictor is not None
         if self.use_mask_predictor:
@@ -202,16 +201,6 @@ class IQTransformerEncoder(TransformerLayerSequence):
         self._is_init = True
 
 
-    def create_reference_points_method(self, device):
-        assert not self.created_reference_points
-        
-        # NOTE: for "anchor" type, it is initialized in init
-        if self.learn_ref_pts_type == "anchor":
-            assert hasattr(self, "reference_points")
-            self.reference_points.init_coords_depth(device)
-
-        self.created_reference_points = True
-
     def get_reference_points(self, query, orig_spatial_shapes, depths=None, n_tokens=None, top_rho_inds=None):
         # depths: [B, h0*N*w0+..., 1] unnormalized depths
         
@@ -222,7 +211,7 @@ class IQTransformerEncoder(TransformerLayerSequence):
             # ref_pts_2d_norm: 2d img ref points normalized in range [0,1] Tensor[B, h0*N*w0+..., 2]
             # ref_pts_2p5d_norm: 2.5d img ref points unnormalized Tensor[B, h0*N*w0+..., 3]
             ref_pts_2d_norm, ref_pts_2p5d_unnorm = self.reference_points.get_enc_out_proposals_and_ref_pts(
-                    query.size(0), orig_spatial_shapes, query.device, center_depth_group=True)
+                    query.size(0), orig_spatial_shapes, query.device)
                 
             assert torch.logical_and(ref_pts_2d_norm >= 0.0, ref_pts_2d_norm <= 1.0).all()
             reference_points = [ref_pts_2d_norm, ref_pts_2p5d_unnorm]
@@ -263,9 +252,6 @@ class IQTransformerEncoder(TransformerLayerSequence):
         n_sparse_tokens = int(self.sparse_rho * n_tokens) + 1 if self.use_mask_predictor else n_tokens # round up
 
         src = self.src_embed(src) # [B, h0*N*w0+..., C] # M:0.55GB
-
-        if not self.created_reference_points:
-            self.create_reference_points_method(src.device, n_sparse_tokens)
         
         if self.use_pos_embed3d:
             # pos_embed3d: [B, h0*N*w0+..., C],  cone: [B, h0*N*w0+..., 8], img2lidar: # [B, h0*N*w0+..., 4, 4]
@@ -560,21 +546,6 @@ class IQTransformerEncoder(TransformerLayerSequence):
 
         loss_dict['enc.loss_cls'] = loss_cls
         loss_dict['enc.loss_bbox'] = loss_bbox
-
-        ## mask loss
-        if self.use_mask_predictor is not None and "encoder" in self.mask_pred_target:
-            loss_mask = self.mask_predictor.loss(
-                mask_prediction=preds_dicts['src_mask_prediction'],
-                sampling_locations=preds_dicts['sampling_locations_enc'],
-                attn_weights=preds_dicts['attention_weights_enc'],
-                flattened_spatial_shapes=flattened_spatial_shapes,
-                flattened_level_start_index=flattened_level_start_index,
-                sparse_token_nums=preds_dicts['sparse_token_num']
-            )
-
-            loss_dict.update({
-                "loss_mask": loss_mask
-            })
 
         return loss_dict
         

@@ -213,12 +213,11 @@ class PETRTransformerDecoder(TransformerLayerSequence):
             # query: [B, Q, C]
             # sampling_locs: [B, Q, n_heads, n_levels, n_points, 2]
             # attn_weights: [B, Q, n_heads, n_levels, n_points]
-            layer_out = layer(query, *args, reference_points=reference_points_2d_cam, 
+            query = layer(query, *args, reference_points=reference_points_2d_cam, 
                                 orig_spatial_shapes=orig_spatial_shapes, num_cameras=6, 
                                 num_second_matches=num_second_matches, second_matches_valid_idxs=second_matches_valid_idxs,
                                 idx_with_second_match=idx_with_second_match,
                                 **kwargs)
-            query = layer_out[0]
             # hack implementation for iterative bounding box refinement
             assert bbox_embed is not None
             query_out=torch.nan_to_num(query)
@@ -288,7 +287,7 @@ class PETRTemporalTransformer(BaseModule):
                 temp_memory=None, temp_pos=None, mask=None, reference_points=None, 
                 lidar2img=None, extrinsics=None, orig_spatial_shapes=None,
                 flattened_spatial_shapes=None, flattened_level_start_index=None,
-                img_metas=None, prev_exists=None):
+                img_metas=None):
         
         assert self.two_stage
 
@@ -313,7 +312,6 @@ class PETRTemporalTransformer(BaseModule):
             flattened_spatial_shapes=flattened_spatial_shapes, 
             flattened_level_start_index=flattened_level_start_index,
             img_metas=img_metas,
-            prev_exists=prev_exists,
             )
         return outs_decoder
 

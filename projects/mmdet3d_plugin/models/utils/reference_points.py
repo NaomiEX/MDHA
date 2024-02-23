@@ -19,7 +19,9 @@ class ReferencePoints(BaseModule):
                  coords_depth_bucket_format="xy", 
                  mlvl_feats_format=1, 
                  depth_start=1.0, 
-                 depth_max=61.2):
+                 depth_max=61.2,
+                 coords_depth_grad=False,
+                 ):
         super().__init__()
 
         self.coords_depth_type = coords_depth_type.lower()
@@ -30,34 +32,28 @@ class ReferencePoints(BaseModule):
             if isinstance(coords_depth_files, dict):
                 assert all([lvl in coords_depth_files for lvl in range(n_levels)])
                 print(coords_depth_files)
-                cam_depths_lvl = dict()
                 for lvl in range(n_levels):
                     with open(coords_depth_files[lvl], "rb") as f:
                         cam_depths = pickle.load(f)
                     if coords_depth_file_format == "xy": # convert to y,x format
                         # cam_depths = [d.T for d in cam_depths]
                         cam_depths = [torch.clamp(d.T, min=depth_start, max=depth_max) for d in cam_depths]
-
-                    cam_depths_lvl[lvl] = cam_depths
+                    setattr(self, f"cam_depths_lvl{lvl}", nn.Parameter(
+                        torch.stack(cam_depths), requires_grad=coords_depth_grad
+                    ))
             
-            self.coords_depth = cam_depths_lvl
+            self.coords_depth = {lvl: getattr(self, f"cam_depths_lvl{lvl}") 
+                                 for lvl in range(n_levels)}
             if not isinstance(coords_depth_bucket_size[0], list):
                 coords_depth_bucket_size = [coords_depth_bucket_size for _ in range(n_levels)]
             if coords_depth_bucket_format == "xy":
                 coords_depth_bucket_size = [[b[1], b[0]] for b in coords_depth_bucket_size]
             self.coords_depth_bucket_size = coords_depth_bucket_size
             
-            self.already_init=False
         elif self.coords_depth_type == "learnable":
-            self.already_init = True
             self.coords_depth = None
         
         self.img_size = [Projections.IMG_SIZE[1], Projections.IMG_SIZE[0]] # [H, W]
-
-    def init_coords_depth(self, device):
-        if self.coords_depth_type == "fixed":
-            self.coords_depth = {lvl: [d.to(device) for d in cam_depths] for lvl, cam_depths in self.coords_depth.items()}
-            self.already_init=True
         
     def set_coord_depths(self, depths, n_tokens=None, top_rho_inds=None):
         assert self.coords_depth_type == "learnable"
@@ -68,11 +64,9 @@ class ReferencePoints(BaseModule):
             self.coords_depth.scatter_(1, top_rho_inds, depths)
     
     
-    def get_enc_out_proposals_and_ref_pts(self, batch_size, spatial_shapes, device, center_depth_group=True, num_cams=6,
-                                          ret_coord_groups=False, 
-                                        #   ret_orig_coords=False, debug=False
+    def get_enc_out_proposals_and_ref_pts(self, batch_size, spatial_shapes, device, num_cams=6,
+                                          ret_coord_groups=False,
                                           ):
-        assert self.already_init
         assert self.coords_depth is not None 
         all_ref_pts_2d_norm = []
         all_ref_pts_2p5d_unnorm = []
@@ -86,7 +80,7 @@ class ReferencePoints(BaseModule):
             ##### get coord depths #####
             if self.coords_depth_type == "fixed":
                 if self.coords_depth_bucket_size[lvl] == [h_i, w_i]:
-                    coord_depths_all_cams = torch.stack(self.coords_depth[lvl]) # [N, H, W]
+                    coord_depths_all_cams = self.coords_depth[lvl] # [N, H, W]
                     assert list(coord_depths_all_cams.shape) == [num_cams, h_i, w_i]
                 else:
                     raise NotImplementedError()
@@ -127,9 +121,5 @@ class ReferencePoints(BaseModule):
 
         if ret_coord_groups:
             out += [all_coord_groups]
-        # if debug:
-        #     if self.coords_depth_type == "fixed" and ret_orig_coords:
-        #         out += [all_ref_pts_2p5d_unnorm_orig]
-        #     out += [debug_msg]
 
         return out
