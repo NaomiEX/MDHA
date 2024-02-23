@@ -44,9 +44,7 @@ class Petr3D(MVXTwoStageDetector):
                  pts_bbox_head=None,
                  train_cfg=None,
                  test_cfg=None,
-                 num_frame_head_grads=2,
                  num_frame_backbone_grads=2,
-                 num_frame_losses=2,
                  strides=[4, 8, 16, 32],
                  pretrained=None,
                  embed_dims=256,
@@ -61,7 +59,7 @@ class Petr3D(MVXTwoStageDetector):
                  depth_net=None,
                  depth_pred_position=0,
                  calc_depth_pred_loss=False,
-                 pos_embed3d=None,):
+                 ):
         if depth_net is not None:
             depth_net['depth_pred_position'] = depth_pred_position
             depth_net['mlvl_feats_format'] = mlvl_feats_format
@@ -84,9 +82,7 @@ class Petr3D(MVXTwoStageDetector):
         if self.use_grid_mask:
             self.grid_mask = GridMask(True, True, rotate=1, offset=False, ratio=0.5, mode=1, prob=0.7)
         self.prev_scene_token = None
-        self.num_frame_head_grads = num_frame_head_grads
         self.num_frame_backbone_grads = num_frame_backbone_grads
-        self.num_frame_losses = num_frame_losses
         self.test_flag = False
 
         ## new params
@@ -124,10 +120,6 @@ class Petr3D(MVXTwoStageDetector):
         if calc_depth_pred_loss: 
             assert self.depth_net is not None or (self.use_encoder and self.encoder.depth_net is not None)
         
-        self.use_pos_embed3d=pos_embed3d is not None
-        if self.use_pos_embed3d:
-            self.pos_embed3d = build_plugin_layer(pos_embed3d)[1]
-
         ## debug init
         self.debug = Debug(**debug_args)
         debug_modules=debug_args.get('debug_modules', [])

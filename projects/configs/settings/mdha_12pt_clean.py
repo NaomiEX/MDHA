@@ -194,35 +194,32 @@ encoder = dict(
 
 dec_ref_pts_mode = "single" # either single or multiple
 
+dn_args = dict(
+    scalar=10, ##noise groups
+    noise_scale = 1.0, 
+    dn_weight= 1.0, ##dn loss weight
+    split = 0.75, ###positive rate
+)
+
 pts_bbox_head=dict(
         type='StreamPETRHead',
-        in_channels=256,
         num_query=644,
         memory_len=1024,
-        topk_proposals=256,
         num_propagated=256,
         with_ego_pos=True,
         with_dn=True,
-        scalar=10, ##noise groups
-        noise_scale = 1.0, 
-        dn_weight= 1.0, ##dn loss weight
-        split = 0.75, ###positive rate
-        LID=True,
-        with_position=True,
+
+        **dn_args,
+
         position_range=[-61.2, -61.2, -10.0, 61.2, 61.2, 10.0],
 
         **obj_det3d_loss_cfg,
 
         ##new##
-        init_ref_pts=False,
-        init_pseudo_ref_pts=False,
         pos_embed3d= position_embedding_3d if pos_embed3d=="decoder" else None,
         use_spatial_alignment=spatial_alignment=="decoder",
-        use_own_reference_points=False,
         two_stage=modules['encoder'],
         mlvl_feats_format=mlvl_feats_format,
-        skip_first_frame_self_attn=False,
-        init_pseudo_ref_pts_from_encoder_out=False,
         use_inv_sigmoid=use_inv_sigmoid["decoder"],
         mask_pred_target="pts_bbox_head" in mask_pred_target,
         ##
@@ -277,9 +274,7 @@ pts_bbox_head=dict(
     # model training and testing settings
 model = dict(
     type='Petr3D',
-    num_frame_head_grads=num_frame_losses,
     num_frame_backbone_grads=num_frame_losses,
-    num_frame_losses=num_frame_losses,
     strides=strides,
     use_grid_mask=True,
     ##new##
@@ -290,9 +285,6 @@ model = dict(
     use_xy_embed=True,
     use_cam_embed=False,
     use_lvl_embed=modules['encoder'], # ! IMPORTANT: MAKE THIS TRUE IF USING ENCODER
-    use_spatial_alignment=spatial_alignment == "petr3d",
-    pos_embed3d=position_embedding_3d if pos_embed3d == "petr3d" else None,
-    # debug_args=debug_args,
     ##
     img_backbone=dict(
         type="ResNet",

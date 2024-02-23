@@ -22,10 +22,8 @@ from mmdet.core import (build_assigner, build_sampler, multi_apply,
 from mmdet.models.utils import build_transformer
 from mmdet.models import HEADS, build_loss
 from mmdet.models.dense_heads.anchor_free_head import AnchorFreeHead
-from mmdet.models.utils.transformer import inverse_sigmoid
 from mmdet3d.core.bbox.coders import build_bbox_coder
 from projects.mmdet3d_plugin.core.bbox.util import normalize_bbox, clamp_to_rot_range
-from ..utils.lidar_utils import normalize_lidar
 
 from mmdet.models.utils import NormedLinear
 from projects.mmdet3d_plugin.models.utils.positional_encoding import pos2posemb3d, pos2posemb1d, nerf_positional_encoding
@@ -34,59 +32,27 @@ from projects.mmdet3d_plugin.models.utils.lidar_utils import denormalize_lidar, 
 
 @HEADS.register_module()
 class StreamPETRHead(AnchorFreeHead):
-    """Implements the DETR transformer head.
-    See `paper: End-to-End Object Detection with Transformers
-    <https://arxiv.org/pdf/2005.12872>`_ for details.
-    Args:
-        num_classes (int): Number of categories excluding the background.
-        in_channels (int): Number of channels in the input feature map.
-        num_query (int): Number of query in Transformer.
-        num_reg_fcs (int, optional): Number of fully-connected layers used in
-            `FFN`, which is then used for the regression head. Default 2.
-        transformer (obj:`mmcv.ConfigDict`|dict): Config for transformer.
-            Default: None.
-        sync_cls_avg_factor (bool): Whether to sync the avg_factor of
-            all ranks. Default to False.
-        positional_encoding (obj:`mmcv.ConfigDict`|dict):
-            Config for position encoding.
-        loss_cls (obj:`mmcv.ConfigDict`|dict): Config of the
-            classification loss. Default `CrossEntropyLoss`.
-        loss_bbox (obj:`mmcv.ConfigDict`|dict): Config of the
-            regression loss. Default `L1Loss`.
-        loss_iou (obj:`mmcv.ConfigDict`|dict): Config of the
-            regression iou loss. Default `GIoULoss`.
-        tran_cfg (obj:`mmcv.ConfigDict`|dict): Training config of
-            transformer head.
-        test_cfg (obj:`mmcv.ConfigDict`|dict): Testing config of
-            transformer head.
-        init_cfg (dict or list[dict], optional): Initialization config dict.
-            Default: None
-    """
     _version = 2
 
     def __init__(self,
                  num_classes,
-                 in_channels=256,
                  embed_dims=256,
                  num_query=100,
                  num_reg_fcs=2,
                  memory_len=1024,
-                 topk_proposals=256,
                  num_propagated=256,
                  with_dn=True,
                  with_ego_pos=True,
                  match_with_velo=True,
                  match_costs=None,
-                 transformer=None,
                  sync_cls_avg_factor=False,
+                 transformer=None,
                  code_weights=None,
                  bbox_coder=None,
                  loss_cls=None,
                  loss_bbox=dict(type='L1Loss', loss_weight=5.0),
                  loss_iou=dict(type='GIoULoss', loss_weight=2.0),
-                 train_cfg=None,
-                 test_cfg=dict(max_per_img=100),
-                 position_range=[-65, -65, -8.0, 65, 65, 8.0],
+                 position_range=[-61.2, -61.2, -10.0, 61.2, 61.2, 10.0],
                  scalar = 5,
                  noise_scale = 0.4,
                  noise_trans = 0.0,
@@ -98,14 +64,15 @@ class StreamPETRHead(AnchorFreeHead):
                  ## new params
                  pos_embed3d=None,
                  use_spatial_alignment=False,
-                 use_own_reference_points=False,
                  two_stage=False,
                  mlvl_feats_format=0,
                  pc_range=None,
-                 use_inv_sigmoid=True,
+                 use_inv_sigmoid=False,
                  mask_pred_target=False,
                  encode_3d_ref_pts_as_query_pos=True,
                  use_sigmoid_on_attn_out=False,
+                 train_cfg=None,
+                 test_cfg=dict(max_per_img=100),
                  **kwargs):
         # NOTE here use `AnchorFreeHead` instead of `TransformerHead`,
         # since it brings inconvenience when the initialization of
@@ -138,9 +105,7 @@ class StreamPETRHead(AnchorFreeHead):
 
         self.num_query = num_query
         self.num_classes = num_classes
-        self.in_channels = in_channels
         self.memory_len = memory_len
-        self.topk_proposals = topk_proposals
         self.num_propagated = num_propagated
         self.with_dn = with_dn
         self.with_ego_pos = with_ego_pos
@@ -155,7 +120,6 @@ class StreamPETRHead(AnchorFreeHead):
             self.pos_embed3d=build_plugin_layer(pos_embed3d)[1]
         
         self.use_spatial_alignment=use_spatial_alignment
-        self.use_own_reference_points=use_own_reference_points
 
         self.scalar = scalar
         self.bbox_noise_scale = noise_scale
@@ -180,7 +144,7 @@ class StreamPETRHead(AnchorFreeHead):
             for attn_cfg in transformer['decoder']['transformerlayers']['attn_cfgs']:
                 if attn_cfg['type'] == 'CustomDeformAttn':
                     attn_cfg['test_mode'] = True
-        super(StreamPETRHead, self).__init__(num_classes, in_channels, init_cfg = init_cfg)
+        super(StreamPETRHead, self).__init__(num_classes, embed_dims, init_cfg = init_cfg)
 
         self.loss_cls = build_loss(loss_cls)
         self.loss_bbox = build_loss(loss_bbox)
@@ -242,16 +206,14 @@ class StreamPETRHead(AnchorFreeHead):
 
     def _init_layers(self):
         self.memory_embed = nn.Sequential(
-                nn.Linear(self.in_channels, self.embed_dims),
+                nn.Linear(self.embed_dims, self.embed_dims),
                 nn.ReLU(),
                 nn.Linear(self.embed_dims, self.embed_dims),
             )
         
         if self.use_pos_embed3d:
             self.featurized_pe = SELayer_Linear(self.embed_dims)
-        if self.use_own_reference_points:
-            self.reference_points = nn.Embedding(self.num_query, 3)
-        if self.num_propagated > 0 and not self.skip_first_frame_self_attn and not self.init_pseudo_ref_pts_from_encoder_out:
+        if self.num_propagated > 0 :
             self.pseudo_reference_points = nn.Embedding(self.num_propagated, 3)
 
         self.query_embedding = nn.Sequential(
@@ -277,8 +239,6 @@ class StreamPETRHead(AnchorFreeHead):
         """Initialize weights of the transformer head."""
         # TODO: TRY TO INITIALIZE IT AS THE TOP K MOST COMMON OBJECT (X,Y,Z)
         # The initialization for transformer is important
-        if self.use_own_reference_points and not self.init_ref_pts:
-            nn.init.uniform_(self.reference_points.weight.data, 0, 1)
         if hasattr(self, "pseudo_reference_points"):
             if not self.init_pseudo_ref_pts:
                 nn.init.uniform_(self.pseudo_reference_points.weight.data, 0, 1)
@@ -343,7 +303,7 @@ class StreamPETRHead(AnchorFreeHead):
                 rec_wlhrot = all_bbox_preds[..., 3:-2][-1]
         
         # topk proposals
-        _, topk_indexes = torch.topk(rec_score, self.topk_proposals, dim=1)
+        _, topk_indexes = torch.topk(rec_score, self.num_propagated, dim=1)
         rec_timestamp = topk_gather(rec_timestamp, topk_indexes)
         rec_reference_points = topk_gather(rec_reference_points, topk_indexes).detach()
         rec_memory = topk_gather(rec_memory, topk_indexes).detach()
