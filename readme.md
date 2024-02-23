@@ -70,7 +70,7 @@ sbatch compile.job
 ## run
 (local):
 ```bash
-tools/dist_train.sh projects/configs/MDHA/full/1gpu/mdha_8pt_1gpu.py 1 --work-dir work_dirs/mdha_8pt_1gpu
+tools/dist_train.sh projects/configs/execution/mdha_12pt_clean_1gpu2bs.py 1 --work-dir work_dirs/mdha_12pt_clean_1gpu2bs
 ```
 
 (local, 2gpu):
@@ -86,7 +86,7 @@ GPUS_PER_NODE=2 MEM=160G ./tools/slurm_train.sh highprio mdha_12 2 ./projects/co
 ```
 
 # 4 GPU
-GPUS_PER_NODE=4 MEM=160G ./tools/slurm_train.sh highprio mdha_12_back0p5 4 ./projects/configs/execution/mdha_12pt_4gpu16bs_backbone0p5.py ./work_dirs/mdha_12pt_4gpu16bs_backbone0p5
+GPUS_PER_NODE=4 MEM=160G ./tools/slurm_train.sh highprio mdha_12_asymffn 4 ./projects/configs/execution/mdha_12pt_asymffn_4gpu16bs_nocp.py ./work_dirs/mdha_12pt_asymffn_4gpu16bs_nocp
 
 ## eval
 (local):

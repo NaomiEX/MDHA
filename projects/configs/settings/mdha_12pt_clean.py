@@ -112,40 +112,18 @@ position_embedding_3d = dict(
 # NOTE: the encoder config is from encoder_anchor_fixedfull_xyrefptsqencoding_1gpu
 encoder = dict(
     type="IQTransformerEncoder",
-    return_intermediate=False,
     num_layers=1,
-
     mlvl_feats_formats=mlvl_feats_format,
     # pc range is set by petr3d
     learn_ref_pts_type="anchor",
     use_spatial_alignment=spatial_alignment == "encoder",
-    spatial_alignment_all_memory=True, # if False only topk
     pos_embed3d= position_embedding_3d if pos_embed3d == "encoder" else None,
-    encode_query_with_ego_pos=False,
-    encode_query_pos_with_ego_pos=False,
-
     encode_ref_pts_depth_into_query_pos=True,
     ref_pts_depth_encoding_method="mln",
-
     use_inv_sigmoid=use_inv_sigmoid["encoder"],
-
     sync_cls_avg_factor=False,
-    
-    mask_predictor=dict(
-        type="MaskPredictor",
-        in_dim=embed_dims,
-        hidden_dim=embed_dims,
-        loss_type="multilabel_soft_margin_loss",
-    ) if modules['mask_predictor'] else None,
-    mask_pred_before_encoder=False,
-    mask_pred_target=mask_pred_target, # ! IF USING DECODER SHOULD INCLUDE DECODER AS WELL
-    sparse_rho=0.8,
-    
-    process_backbone_mem=True, 
-    process_encoder_mem=True,
-
+    mask_predictor=None,
     position_range=[-61.2, -61.2, -10.0, 61.2, 61.2, 10.0],
-
     reference_point_generator = dict(
         type="ReferencePoints",
         coords_depth_type="fixed",

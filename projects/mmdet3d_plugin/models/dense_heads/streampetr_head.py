@@ -57,7 +57,6 @@ class StreamPETRHead(AnchorFreeHead):
                  mlvl_feats_format=0,
                  pc_range=None,
                  use_inv_sigmoid=False,
-                 mask_pred_target=False,
                  encode_3d_ref_pts_as_query_pos=True,
                  use_sigmoid_on_attn_out=False,
                  train_cfg=None,
@@ -127,7 +126,6 @@ class StreamPETRHead(AnchorFreeHead):
         self.num_decoder_layers = transformer['decoder']['num_layers']
         self.two_stage=two_stage
         transformer['decoder']['use_inv_sigmoid'] = use_inv_sigmoid
-        transformer['decoder']['mask_pred_target'] = mask_pred_target
         if train_cfg is None:
             print("DECODER: !! IN TEST MODE !!")
             for attn_cfg in transformer['decoder']['transformerlayers']['attn_cfgs']:
@@ -161,7 +159,6 @@ class StreamPETRHead(AnchorFreeHead):
         
         self.mlvl_feats_format=mlvl_feats_format
         self.use_inv_sigmoid=use_inv_sigmoid
-        self.mask_pred_target=mask_pred_target
         self.encode_3d_ref_pts_as_query_pos=encode_3d_ref_pts_as_query_pos
         self.use_sigmoid_on_attn_out=use_sigmoid_on_attn_out
 
@@ -517,30 +514,20 @@ class StreamPETRHead(AnchorFreeHead):
         # temp_memory: rest of memory queue Tensor [B, memory_len - num_propagated, 256]
         # temp_pos: rest of query pos in queue Tensor [B, memory_len - num_propagated, 256]
         # rec_ego_pose: eye tensor [B, pad_size+Q+num_propagated*2, 4, 4]
-        # attn_mask: [B, padding+Q+propagated, padding+Q+memory_len] | None
         tgt, query_pos, reference_points, temp_memory, temp_pos, rec_ego_pose = \
             self.temporal_alignment(query_pos, tgt, reference_points)
         
-        # out_dec: [num_layers, B, Q, C]
-        # out_ref_pts: [num_layers, B, Q, 3]
-        # init_ref_pts: [B, Q, 3]
-        outs_decoder = self.transformer(self.reg_branches, memory, tgt, query_pos, attn_mask,  
+        # outs_dec: [num_dec_layers, B, Q, C]
+        # out_ref_pts: sigmoided bbox predictions [num_dec_layers, B, Q, 3]
+        # init_ref_pts: initial ref pts (in [0,1] range) [B, Q, 3]
+        # NOTE: expecting all ref_pts to already be unnormalized
+        outs_dec, out_ref_pts, init_ref_pts = self.transformer(self.reg_branches, memory, tgt, query_pos, attn_mask,  
                                         temp_memory=temp_memory, temp_pos=temp_pos,
                                         reference_points = reference_points.clone(), lidar2img=data['lidar2img'],
                                         extrinsics=data['extrinsics'], orig_spatial_shapes=orig_spatial_shapes, 
                                         flattened_spatial_shapes=flattened_spatial_shapes, 
                                         flattened_level_start_index=flattened_level_start_index,
-                                        img_metas=img_metas, prev_exists=data['prev_exists'])
-        # outs_dec: [num_dec_layers, B, Q, C]
-        # out_ref_pts: sigmoided bbox predictions [num_dec_layers, B, Q, 3]
-        # init_ref_pts: initial ref pts (in [0,1] range) [B, Q, 3]
-        # NOTE: expecting all ref_pts to already be unnormalized
-        outs_dec, out_ref_pts, init_ref_pts = outs_decoder[:3]
-        if self.mask_pred_target:
-            # sampling_locs_all: [B, num_dec_layers, Q, n_heads, n_levels, n_points, 2]
-            # attn_weights_all: [B, num_dec_layers, Q, n_heads, n_levels, n_points]
-            sampling_locs_all, attn_weights_all = outs_decoder[3:5]
-
+                                        img_metas=img_metas)
         outs_dec = torch.nan_to_num(outs_dec)
         outputs_classes = []
         outputs_coords = []
@@ -593,13 +580,6 @@ class StreamPETRHead(AnchorFreeHead):
                 'dn_mask_dict':None,
             }
 
-        if self.mask_pred_target:
-            # sampling_locs_all: [B, num_dec_layers, Q, n_heads, n_levels, n_points, 2]
-            # attn_weights_all: [B, num_dec_layers, Q, n_heads, n_levels, n_points]
-            outs.update({
-                'all_sampling_locs_dec': sampling_locs_all,
-                'all_attn_weights_dec': attn_weights_all,
-            })
         return outs
     
     def prepare_for_loss(self, mask_dict):
@@ -772,8 +752,8 @@ class StreamPETRHead(AnchorFreeHead):
         bbox_weights = bbox_weights * self.code_weights
 
         
-        loss_bbox = self.loss_bbox(
-                bbox_preds[isnotnan, :10], normalized_bbox_targets[isnotnan, :10], bbox_weights[isnotnan, :10], avg_factor=num_total_pos)
+        loss_bbox = self.loss_bbox(bbox_preds[isnotnan, :10], normalized_bbox_targets[isnotnan, :10], 
+                                   bbox_weights[isnotnan, :10], avg_factor=num_total_pos)
 
         loss_cls = torch.nan_to_num(loss_cls,nan=1e-16, posinf=100.0, neginf=-100.0)
         loss_bbox = torch.nan_to_num(loss_bbox, nan=1e-16, posinf=100.0, neginf=-100.0)

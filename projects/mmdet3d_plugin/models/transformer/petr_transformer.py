@@ -18,7 +18,6 @@ from mmcv.cnn.bricks.registry import (ATTENTION,TRANSFORMER_LAYER,
 from mmcv.utils import deprecated_api_warning, ConfigDict
 import copy
 from torch.nn import ModuleList
-from ..utils.attention import FlashMHA
 import torch.utils.checkpoint as cp
 
 from mmcv.runner import auto_fp16
@@ -147,9 +146,7 @@ class PETRTransformerDecoder(TransformerLayerSequence):
                  ref_pts_mode="single",
                  use_inv_sigmoid=False,
                  use_sigmoid_on_attn_out=False,
-                 mask_pred_target=False,
                  **kwargs):
-        kwargs['transformerlayers']['mask_pred_target'] = mask_pred_target
         super(PETRTransformerDecoder, self).__init__(*args, **kwargs)
         self._iter = 0
         self.pc_range = nn.Parameter(torch.tensor(
@@ -165,12 +162,10 @@ class PETRTransformerDecoder(TransformerLayerSequence):
         self.two_stage=two_stage
         self.use_inv_sigmoid=use_inv_sigmoid
         self.use_sigmoid_on_attn_out=use_sigmoid_on_attn_out
-        self.mask_pred_target=mask_pred_target
         
 
     def forward(self, bbox_embed, query, *args, reference_points=None, lidar2img=None, extrinsics=None, 
                 orig_spatial_shapes=None, img_metas=None, num_cameras=6, **kwargs):
-        
         if not self.return_intermediate:
             x = super().forward(query, *args, reference_points=None, **kwargs)
             if self.post_norm:
@@ -179,26 +174,20 @@ class PETRTransformerDecoder(TransformerLayerSequence):
 
         intermediate = []
         intermediate_reference_points = []
-        sampling_locs_all = []
-        attn_weights_all = []
 
         cam_transformations = dict(lidar2img=lidar2img, lidar2cam=extrinsics)
-        assert lidar2img.dim() == 4, f"got lidar2img shape: {lidar2img.shape}"
-        assert extrinsics.dim()==4, f"got extrinsics shape: {extrinsics.shape}"
 
-        # init_reference_point = reference_points.clone()
         for lid, layer in enumerate(self.layers):
             if self.use_inv_sigmoid:
                 ref_pts_unnormalized = inverse_sigmoid(reference_points.clone()) # R: lidar space
             else:
                 ref_pts_unnormalized = denormalize_lidar(reference_points.clone(), self.pc_range) # R:lidar space
-            # print(f"petr transformer decoder ref pts unnormalized shape: {ref_pts_unnormalized.shape}")
             if lid == 0:
                 init_reference_point =ref_pts_unnormalized.clone()
             # [B, Q, 2]
             with torch.no_grad():
                 if self.ref_pts_mode == "single":
-                    reference_points_2d_cam, num_non_matches = convert_3d_to_2d_global_cam_ref_pts(cam_transformations,
+                    reference_points_2d_cam, _ = convert_3d_to_2d_global_cam_ref_pts(cam_transformations,
                                                                         ref_pts_unnormalized, orig_spatial_shapes,
                                                                         img_metas, ret_num_non_matches=True)
                     
@@ -230,11 +219,6 @@ class PETRTransformerDecoder(TransformerLayerSequence):
                                 idx_with_second_match=idx_with_second_match,
                                 **kwargs)
             query = layer_out[0]
-            if self.mask_pred_target: ##
-                sampling_locs, attn_weights = layer_out[1:3]
-                # assert sampling_locs is not None and attn_weights is not None
-                sampling_locs_all.append(sampling_locs)
-                attn_weights_all.append(attn_weights)
             # hack implementation for iterative bounding box refinement
             assert bbox_embed is not None
             query_out=torch.nan_to_num(query)
@@ -260,8 +244,6 @@ class PETRTransformerDecoder(TransformerLayerSequence):
                     unnormalized_ref_pts = coord_pred[..., 0:3].detach().clone()
                     next_ref_pts = normalize_lidar(coord_pred[..., 0:3].detach().clone(), self.pc_range)
 
-                # ref_pts_unnormalized = coord_pred[..., 0:3].detach() # [B, Q, 3]
-
             if self.return_intermediate:
                 intermediate_reference_points.append(unnormalized_ref_pts)
                 if self.post_norm is not None:
@@ -271,13 +253,7 @@ class PETRTransformerDecoder(TransformerLayerSequence):
             reference_points = next_ref_pts
 
         self._iter += 1
-        # raise Exception
-        if self.mask_pred_target:
-            return torch.stack(intermediate), torch.stack(intermediate_reference_points), init_reference_point, \
-                torch.stack(sampling_locs_all, dim=1), torch.stack(attn_weights_all, dim=1)
-        else:
-            return torch.stack(intermediate), torch.stack(intermediate_reference_points), init_reference_point
-
+        return torch.stack(intermediate), torch.stack(intermediate_reference_points), init_reference_point
 
 
 @TRANSFORMER.register_module()
@@ -314,10 +290,7 @@ class PETRTemporalTransformer(BaseModule):
                 flattened_spatial_shapes=None, flattened_level_start_index=None,
                 img_metas=None, prev_exists=None):
         
-        # ! WARNING: NEED TO ENSURE THAT REF_PTS[NUM_PROPAGATED:] are aligned with current frame
         assert self.two_stage
-        if tgt is None:
-            tgt = torch.zeros_like(query_pos)
 
         # out_dec: [num_layers, B, Q, C]
         # out_ref_pts: [num_layers, B, Q, 3]
@@ -364,7 +337,6 @@ class PETRTemporalDecoderLayer(BaseModule):
                  batch_first=False,
                  with_cp=True,
                  skip_first_frame_self_attn=False,
-                 mask_pred_target=False,
                  **kwargs):
 
         deprecated_args = dict(
@@ -447,7 +419,6 @@ class PETRTemporalDecoderLayer(BaseModule):
         self.use_checkpoint = with_cp
 
         self.skip_first_frame_self_attn=skip_first_frame_self_attn
-        self.mask_pred_target=mask_pred_target
 
     def _forward(self,
                 query,
@@ -468,7 +439,6 @@ class PETRTemporalDecoderLayer(BaseModule):
                 num_second_matches=None,
                 second_matches_valid_idxs=None,
                 idx_with_second_match=None,
-                prev_exists=None, # Tensor [B]
                 ):
         norm_index = 0
         attn_index = 0
@@ -488,11 +458,6 @@ class PETRTemporalDecoderLayer(BaseModule):
                         f'to the number of attention in ' \
                         f'operation_order {self.num_attn}'
 
-        if prev_exists is not None:
-            valid_mask = (prev_exists.long() | (not self.skip_first_frame_self_attn)).bool()
-        else:
-            valid_mask=torch.arange(0, query.size(0))
-
         for layer in self.operation_order:
             if layer == 'self_attn':
                 if temp_memory is not None:
@@ -505,7 +470,7 @@ class PETRTemporalDecoderLayer(BaseModule):
                     temp_pos = query_pos
 
                 # [B, Q, 256]
-                query_out = self.attentions[attn_index](
+                query = self.attentions[attn_index](
                     query,
                     key=temp_key,
                     value=temp_value,
@@ -516,13 +481,7 @@ class PETRTemporalDecoderLayer(BaseModule):
                     key_padding_mask=query_key_padding_mask,
                     inp_batch_first=True,
                     )
-                
-                if not valid_mask.all():
-                    invalid_mask = ~valid_mask
-                    query_out[invalid_mask] = query[invalid_mask]
-                
-                query=query_out
-
+            
                 attn_index += 1
                 identity = query
 
@@ -531,7 +490,7 @@ class PETRTemporalDecoderLayer(BaseModule):
                 norm_index += 1
 
             elif layer == 'cross_attn':
-                cross_attn_out = self.attentions[attn_index](
+                query = self.attentions[attn_index](
                     query,
                     value,
                     key=key, # None if two_stage
@@ -545,22 +504,11 @@ class PETRTemporalDecoderLayer(BaseModule):
                     num_cameras=num_cameras,
                     attn_mask=attn_masks[attn_index],
                     key_padding_mask=key_padding_mask,
-                    return_query_only=not self.mask_pred_target,
+                    return_query_only=True,
                     num_second_matches=num_second_matches,
                     second_matches_valid_idxs=second_matches_valid_idxs,
                     idx_with_second_match=idx_with_second_match,
                     )
-                if self.mask_pred_target:
-                    assert isinstance(cross_attn_out, (list, tuple))
-                    # query: [B, Q, C]
-                    # sampling_locs: [B, Q, n_heads, n_levels, n_points, 2]
-                    # attn_weights: [B, Q, n_heads, n_levels, n_points]
-                    query, sampling_locs, attn_weights = cross_attn_out
-                else:
-                    # print("warning: not returning sampling locs and attn weights")
-                    query = cross_attn_out
-                    sampling_locs, attn_weights = None, None
-
                 attn_index += 1
                 identity = query
 
@@ -569,7 +517,7 @@ class PETRTemporalDecoderLayer(BaseModule):
                     query, identity if self.pre_norm else None)
                 ffn_index += 1
 
-        return query, sampling_locs, attn_weights
+        return query
 
     def forward(self, 
                 query,
@@ -590,7 +538,6 @@ class PETRTemporalDecoderLayer(BaseModule):
                 num_second_matches=None,
                 second_matches_valid_idxs=None,
                 idx_with_second_match=None,
-                prev_exists=None,
                 ):
         """Forward function for `TransformerCoder`.
         Returns:
@@ -618,7 +565,6 @@ class PETRTemporalDecoderLayer(BaseModule):
                 num_second_matches,
                 second_matches_valid_idxs,
                 idx_with_second_match,
-                prev_exists,
                 )
         else:
             x = self._forward(
@@ -640,7 +586,6 @@ class PETRTemporalDecoderLayer(BaseModule):
             num_second_matches,
             second_matches_valid_idxs,
             idx_with_second_match,
-            prev_exists,
         )
         return x
 
