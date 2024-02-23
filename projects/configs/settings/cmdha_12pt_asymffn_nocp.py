@@ -21,7 +21,7 @@ num_levels=len(strides)
 
 queue_length = 1
 num_frame_losses = 1
-collect_keys=['lidar2img', 'intrinsics', 'extrinsics','timestamp', 'img_timestamp', 'ego_pose', 'ego_pose_inv']
+collect_keys=['lidar2img', 'intrinsics', 'extrinsics', 'timestamp', 'ego_pose', 'ego_pose_inv']
 input_modality = dict(
     use_lidar=False,
     use_camera=True,
@@ -112,40 +112,18 @@ position_embedding_3d = dict(
 # NOTE: the encoder config is from encoder_anchor_fixedfull_xyrefptsqencoding_1gpu
 encoder = dict(
     type="IQTransformerEncoder",
-    return_intermediate=False,
     num_layers=1,
-
     mlvl_feats_formats=mlvl_feats_format,
     # pc range is set by petr3d
     learn_ref_pts_type="anchor",
     use_spatial_alignment=spatial_alignment == "encoder",
-    spatial_alignment_all_memory=True, # if False only topk
     pos_embed3d= position_embedding_3d if pos_embed3d == "encoder" else None,
-    encode_query_with_ego_pos=False,
-    encode_query_pos_with_ego_pos=False,
-
     encode_ref_pts_depth_into_query_pos=True,
     ref_pts_depth_encoding_method="mln",
-
     use_inv_sigmoid=use_inv_sigmoid["encoder"],
-
     sync_cls_avg_factor=False,
-    
-    mask_predictor=dict(
-        type="MaskPredictor",
-        in_dim=embed_dims,
-        hidden_dim=embed_dims,
-        loss_type="multilabel_soft_margin_loss",
-    ) if modules['mask_predictor'] else None,
-    mask_pred_before_encoder=False,
-    mask_pred_target=mask_pred_target, # ! IF USING DECODER SHOULD INCLUDE DECODER AS WELL
-    sparse_rho=0.8,
-    
-    process_backbone_mem=True, 
-    process_encoder_mem=True,
-
+    mask_predictor=None,
     position_range=[-61.2, -61.2, -10.0, 61.2, 61.2, 10.0],
-
     reference_point_generator = dict(
         type="ReferencePoints",
         coords_depth_type="fixed",
@@ -185,8 +163,16 @@ encoder = dict(
                 encode_2d_ref_pts_into_query_pos=False,
             )
         ],
-        feedforward_channels=1024,
-        ffn_dropout=0.1,
+        ffn_cfgs=dict(
+            type="AsymmetricFFN",
+            in_channels=embed_dims * 2,
+            pre_norm=dict(type="LN"),
+            embed_dims=embed_dims,
+            feedforward_channels=1024,
+            num_fcs=2,
+            ffn_drop=0.1,
+            act_cfg=dict(type="ReLU", inplace=True),
+        ),
         operation_order=('self_attn', 'norm', 'ffn', 'norm')
     ),
     **enc_obj_det3d_loss_cfg,
@@ -194,35 +180,32 @@ encoder = dict(
 
 dec_ref_pts_mode = "single" # either single or multiple
 
+dn_args = dict(
+    scalar=10, ##noise groups
+    noise_scale = 1.0, 
+    dn_weight= 1.0, ##dn loss weight
+    split = 0.75, ###positive rate
+)
+
 pts_bbox_head=dict(
         type='StreamPETRHead',
-        in_channels=256,
         num_query=644,
         memory_len=1024,
-        topk_proposals=256,
         num_propagated=256,
         with_ego_pos=True,
         with_dn=True,
-        scalar=10, ##noise groups
-        noise_scale = 1.0, 
-        dn_weight= 1.0, ##dn loss weight
-        split = 0.75, ###positive rate
-        LID=True,
-        with_position=True,
+
+        **dn_args,
+
         position_range=[-61.2, -61.2, -10.0, 61.2, 61.2, 10.0],
 
         **obj_det3d_loss_cfg,
 
         ##new##
-        init_ref_pts=False,
-        init_pseudo_ref_pts=False,
         pos_embed3d= position_embedding_3d if pos_embed3d=="decoder" else None,
         use_spatial_alignment=spatial_alignment=="decoder",
-        use_own_reference_points=False,
         two_stage=modules['encoder'],
         mlvl_feats_format=mlvl_feats_format,
-        skip_first_frame_self_attn=False,
-        init_pseudo_ref_pts_from_encoder_out=False,
         use_inv_sigmoid=use_inv_sigmoid["decoder"],
         mask_pred_target="pts_bbox_head" in mask_pred_target,
         ##
@@ -257,9 +240,17 @@ pts_bbox_head=dict(
                             encode_2d_ref_pts_into_query_pos=False,
                         )
                         ],
-                    feedforward_channels=2048, # TODO: TRY WITH JUST 1024
-                    ffn_dropout=0.1,
-                    with_cp=True,  ###use checkpoint to save memory
+                    ffn_cfgs=dict(
+                        type="AsymmetricFFN",
+                        in_channels=embed_dims * 2,
+                        pre_norm=dict(type="LN"),
+                        embed_dims=embed_dims,
+                        feedforward_channels=2048,
+                        num_fcs=2,
+                        ffn_drop=0.1,
+                        act_cfg=dict(type="ReLU", inplace=True),
+                    ),
+                    with_cp=False,  ###use checkpoint to save memory
                     operation_order=('self_attn', 'norm', 'cross_attn', 'norm',
                                      'ffn', 'norm'),
                     batch_first=True,
@@ -275,35 +266,9 @@ pts_bbox_head=dict(
         )
 
     # model training and testing settings
-
-img_roi_head=dict(
-        type='FocalHead',
-        num_classes=10,
-        in_channels=256,
-        loss_cls2d=dict(
-            type='QualityFocalLoss',
-            use_sigmoid=True,
-            beta=2.0,
-            loss_weight=2.0),
-        loss_centerness=dict(type='GaussianFocalLoss', reduction='mean', loss_weight=1.0),
-        loss_bbox2d=dict(type='L1Loss', loss_weight=5.0),
-        loss_iou2d=dict(type='GIoULoss', loss_weight=2.0),
-        loss_centers2d=dict(type='L1Loss', loss_weight=10.0),
-        train_cfg=dict(
-            assigner2d=dict(
-                type='HungarianAssigner2D',
-                cls_cost=dict(type='FocalLossCost', weight=2.),
-                reg_cost=dict(type='BBoxL1Cost', weight=5.0, box_format='xywh'),
-                iou_cost=dict(type='IoUCost', iou_mode='giou', weight=2.0),
-                centers2d_cost=dict(type='BBox3DL1Cost', weight=10.0))),
-        strides=strides,
-    )
-
 model = dict(
     type='Petr3D',
-    num_frame_head_grads=num_frame_losses,
     num_frame_backbone_grads=num_frame_losses,
-    num_frame_losses=num_frame_losses,
     strides=strides,
     use_grid_mask=True,
     ##new##
@@ -314,9 +279,6 @@ model = dict(
     use_xy_embed=True,
     use_cam_embed=False,
     use_lvl_embed=modules['encoder'], # ! IMPORTANT: MAKE THIS TRUE IF USING ENCODER
-    use_spatial_alignment=spatial_alignment == "petr3d",
-    pos_embed3d=position_embedding_3d if pos_embed3d == "petr3d" else None,
-    # debug_args=debug_args,
     ##
     img_backbone=dict(
         type="ResNet",
@@ -325,7 +287,7 @@ model = dict(
         frozen_stages=-1,
         norm_eval=False,
         style="pytorch",
-        with_cp=True,
+        with_cp=False,
         out_indices=(0, 1, 2, 3),
         norm_cfg=dict(type="BN", requires_grad=True),
         pretrained="ckpt/resnet50-19c8e357.pth",
@@ -339,7 +301,6 @@ model = dict(
         relu_before_extra_convs=True,
         in_channels=[256, 512, 1024, 2048],
     ),
-    img_roi_head=img_roi_head if modules['img_roi_head'] else None,
     pts_bbox_head=pts_bbox_head if modules['pts_bbox_head'] else None,
     train_cfg=dict(
         pts=train_cfg_obj_det3d if modules['pts_bbox_head'] else None,
@@ -368,11 +329,11 @@ ida_aug_conf = {
 # TODO: CURRENTLY I BELIEVE THAT ObjectRangeFilter just filters out the objects out of lidar range not cam range
 train_pipeline = [
     dict(type='LoadMultiViewImageFromFiles', to_float32=True),
-    dict(type='LoadAnnotations3D', with_bbox_3d=True, with_label_3d=True, with_bbox=True,
-        with_label=True, with_bbox_depth=True),
+    dict(type='LoadAnnotations3D', with_bbox_3d=True, with_label_3d=True, with_bbox=False,
+        with_label=False, with_bbox_depth=False),
     dict(type='ObjectRangeFilter', point_cloud_range=point_cloud_range),
     dict(type='ObjectNameFilter', classes=class_names),
-    dict(type='ResizeCropFlipRotImage', data_aug_conf = ida_aug_conf, training=True),
+    dict(type='ResizeCropFlipRotImage', data_aug_conf = ida_aug_conf, with_2d=False, training=True),
     dict(type='GlobalRotScaleTransImage',
             rot_range=[-0.3925, 0.3925],
             translation_std=[0, 0, 0],
@@ -383,12 +344,12 @@ train_pipeline = [
     dict(type='NormalizeMultiviewImage', **img_norm_cfg),
     dict(type='PadMultiViewImage', size_divisor=32),
     dict(type='PETRFormatBundle3D', class_names=class_names, collect_keys=collect_keys + ['prev_exists']),
-    dict(type='Collect3D', keys=['gt_bboxes_3d', 'gt_labels_3d', 'img', 'gt_bboxes', 'gt_labels', 'centers2d', 'depths', 'prev_exists'] + collect_keys,
-             meta_keys=('filename', 'ori_shape', 'img_shape', 'pad_shape', 'scale_factor', 'flip', 'box_mode_3d', 'box_type_3d', 'img_norm_cfg', 'scene_token', 'gt_bboxes_3d','gt_labels_3d'))
+    dict(type='Collect3D', keys=['gt_bboxes_3d', 'gt_labels_3d', 'img', 'prev_exists'] + collect_keys,
+             meta_keys=['pad_shape'])
 ]
 test_pipeline = [
     dict(type='LoadMultiViewImageFromFiles', to_float32=True),
-    dict(type='ResizeCropFlipRotImage', data_aug_conf = ida_aug_conf, training=False),
+    dict(type='ResizeCropFlipRotImage', data_aug_conf = ida_aug_conf, with_2d=False, training=False),
     dict(type='NormalizeMultiviewImage', **img_norm_cfg),
     dict(type='PadMultiViewImage', size_divisor=32),
     dict(
@@ -403,7 +364,7 @@ test_pipeline = [
                 class_names=class_names,
                 with_label=False),
             dict(type='Collect3D', keys=['img'] + collect_keys,
-            meta_keys=('filename', 'ori_shape', 'img_shape','pad_shape', 'scale_factor', 'flip', 'box_mode_3d', 'box_type_3d', 'img_norm_cfg', 'scene_token'))
+            meta_keys=['pad_shape'])
         ])
 ]
 
