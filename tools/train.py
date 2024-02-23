@@ -136,6 +136,10 @@ def main():
     cfg.evaluation.setdefault("interval", cfg['evaluation_interval'])
     ## add samples_per_gpu=batch_size
     cfg.data.setdefault("samples_per_gpu", cfg['batch_size'])
+    ## add debug args
+    if 'debug_modules' in cfg:
+        cfg['debug_args']['debug_modules'] = cfg.debug_modules
+        cfg.model.setdefault("debug_args", cfg['debug_args'])
     
     # set cudnn_benchmark
     if cfg.get('cudnn_benchmark', False):
@@ -213,10 +217,6 @@ def main():
     cfg.seed = args.seed
     meta['seed'] = args.seed
     meta['exp_name'] = osp.basename(args.config)
-
-    ## add debug args
-    debug_args = cfg.get("debug_args",dict(debug=False))
-    cfg.model.setdefault("debug_args", debug_args)
 
 
     model = build_model(

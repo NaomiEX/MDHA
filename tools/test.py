@@ -156,6 +156,11 @@ def main():
     ## add samples_per_gpu=batch_size
     cfg.data.setdefault("samples_per_gpu", cfg['batch_size'])
 
+    ## add debug args
+    if 'debug_modules' in cfg:
+        cfg['debug_args']['debug_modules'] = cfg.debug_modules
+        cfg.model.setdefault("debug_args", cfg['debug_args'])
+
     # set cudnn_benchmark
     if cfg.get('cudnn_benchmark', False):
         torch.backends.cudnn.benchmark = True
@@ -201,9 +206,6 @@ def main():
         nonshuffler_sampler=cfg.data.nonshuffler_sampler,
     )
 
-    ## add debug args
-    debug_args = cfg.get("debug_args",dict(debug=False))
-    cfg.model.setdefault("debug_args", debug_args)
     # build the model and load checkpoint
     cfg.model.train_cfg = None
     model = build_model(cfg.model, test_cfg=cfg.get('test_cfg'))
