@@ -75,6 +75,7 @@ class AsymmetricFFN(BaseModule):
             )
 
     def forward(self, x, identity=None):
+        # print("ASYMFFN")
         if self.pre_norm is not None:
             x = self.pre_norm(x)
         out = self.layers(x)

@@ -302,7 +302,7 @@ class CustomDeformAttn(BaseModule):
         assert output.shape == identity.shape
 
         if self.residual_mode == "cat":
-            output = torch.cat([output, identity])
+            output = torch.cat([output, identity], dim=-1)
         else:
             output = identity + self.proj_drop(output)
 
