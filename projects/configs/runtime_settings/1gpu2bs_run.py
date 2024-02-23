@@ -1,18 +1,12 @@
 _base_ = [
-    "../mdha_wrap_8pt.py"
+    "./default.py"
 ]
 
+total_batch_size = 2
 num_gpus=1
-batch_size=2
-num_iters_per_epoch = 28130 // (num_gpus * batch_size)
+batch_size=total_batch_size // num_gpus
+num_iters_per_epoch = 28130 // total_batch_size
 num_epochs = 25
-
-cfg_name = "mdha_baseline_1gpu"
-debug_args = dict(
-    debug=False,
-    log_file=f"./experiments/debug/{cfg_name}_log.log",
-    collect_stats=False, # expensive collect stats
-)
 
 BS_LR_MAP = {
     16: 4e-4,
@@ -21,7 +15,7 @@ BS_LR_MAP = {
 }
 optimizer = dict(
     type='AdamW', 
-    lr=BS_LR_MAP.get(num_gpus*batch_size, 4e-4), # bs 8: 2e-4 || bs 16: 4e-4
+    lr=BS_LR_MAP.get(total_batch_size, 4e-4), # bs 8: 2e-4 || bs 16: 4e-4
     paramwise_cfg=dict(
         custom_keys={
             'img_backbone': dict(lr_mult=0.25), # 0.25 only for Focal-PETR with R50-in1k pretrained weights

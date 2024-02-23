@@ -17,7 +17,7 @@ class_names = [
     'motorcycle', 'bicycle', 'pedestrian', 'traffic_cone'
 ]
 
-
+attn_num_points=12
 embed_dims=256
 strides=[4, 8, 16, 32]
 num_levels=len(strides)
@@ -39,13 +39,6 @@ mlvl_feats_formats = {
 
 mlvl_feats_format = mlvl_feats_formats["[B, HNW, C]"]
 
-depth_pred_position_types = {
-    "before_feature_flattening": 0,
-    "within_encoder": 1,
-}
-
-depth_pred_position=depth_pred_position_types["before_feature_flattening"]
-
 spatial_alignment="encoder"
 pos_embed3d="encoder"
 
@@ -55,9 +48,6 @@ use_inv_sigmoid = {
 }
 global_deform_attn_wrap_around=False
 
-position_range=[-61.2, -61.2, -10.0, 61.2, 61.2, 10.0]
-depth_start=1.0
-
 ## modules
 modules = dict(
     encoder = True,
@@ -65,7 +55,6 @@ modules = dict(
     dn_head = False,
     img_roi_head=False,
     mask_predictor=False,
-    depth_net = True,
 )
 
 mask_pred_target=[]
@@ -158,11 +147,26 @@ encoder = dict(
     process_backbone_mem=True, 
     process_encoder_mem=True,
 
-    position_range=position_range,
+    position_range=[-61.2, -61.2, -10.0, 61.2, 61.2, 10.0],
 
     reference_point_generator = dict(
         type="ReferencePoints",
-        coords_depth_type="learnable",
+        coords_depth_type="fixed",
+        coords_depth_files={
+            0: "./experiments/depth_coords/MDHA/depth_map_176x64.pkl",
+            1: "./experiments/depth_coords/MDHA/depth_map_88x32.pkl",
+            2: "./experiments/depth_coords/MDHA/depth_map_44x16.pkl",
+            3: "./experiments/depth_coords/MDHA/depth_map_22x8.pkl",
+        },
+        n_levels=4,
+        coords_depth_bucket_size=[
+            [64, 176],
+            [32, 88],
+            [16, 44],
+            [8, 22]
+        ],
+        coords_depth_file_format="xy",
+        coords_depth_bucket_format="yx",
     ),
 
     transformerlayers=dict(
@@ -175,7 +179,7 @@ encoder = dict(
                 num_heads=8,
                 proj_drop=0.1,
                 n_levels=num_levels,
-                n_points=4*2, # num_points * num_cams
+                n_points=attn_num_points, # num_points * num_cams
                 with_wrap_around=global_deform_attn_wrap_around,
                 key_weight_modulation=False,
                 div_sampling_offset_x=False,
@@ -191,7 +195,7 @@ encoder = dict(
     **enc_obj_det3d_loss_cfg,
 )
 
-ref_pts_mode = "single" # either single or multiple
+dec_ref_pts_mode = "single" # either single or multiple
 
 pts_bbox_head=dict(
         type='StreamPETRHead',
@@ -231,7 +235,7 @@ pts_bbox_head=dict(
                 type='PETRTransformerDecoder',
                 return_intermediate=True,
                 num_layers=6,
-                ref_pts_mode=ref_pts_mode,
+                ref_pts_mode=dec_ref_pts_mode,
                 transformerlayers=dict(
                     type='PETRTemporalDecoderLayer',
                     attn_cfgs=[
@@ -247,12 +251,12 @@ pts_bbox_head=dict(
                             num_heads=8,
                             proj_drop=0.1,
                             n_levels=num_levels,
-                            n_points=4*2, # num_points * num_cams
+                            n_points=attn_num_points, # num_points * num_cams
                             with_wrap_around=global_deform_attn_wrap_around,
                             key_weight_modulation=False,
                             div_sampling_offset_x=False,
                             mlvl_feats_format=mlvl_feats_format,
-                            ref_pts_mode=ref_pts_mode,
+                            ref_pts_mode=dec_ref_pts_mode,
                             encode_2d_ref_pts_into_query_pos=False,
                         )
                         ],
@@ -316,22 +320,6 @@ model = dict(
     use_spatial_alignment=spatial_alignment == "petr3d",
     pos_embed3d=position_embedding_3d if pos_embed3d == "petr3d" else None,
     # debug_args=debug_args,
-    depth_pred_position=depth_pred_position,
-    depth_net=dict(
-        type="DepthNet",
-        in_channels=embed_dims,
-        depth_net_type="conv",
-        depth_start=depth_start,
-        depth_max = position_range[3],
-        # extra args
-        sigmoid_out=True,
-        num_layers=2,
-        shared=False,
-        depth_weight_bound=True,
-        depth_weight_limit=0.01,
-        loss_depth=dict(type='L1Loss', loss_weight=0.01),
-    ) if modules["depth_net"] else None,
-    calc_depth_pred_loss=False,
     ##
     img_backbone=dict(
         type="ResNet",
