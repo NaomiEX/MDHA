@@ -25,7 +25,9 @@ class CustomDeformAttn(BaseModule):
                  n_levels=4, n_points=4*6, with_wrap_around=False, key_weight_modulation=False, 
                  div_sampling_offset_x=False, mlvl_feats_format=0, 
                  ref_pts_mode="single", encode_2d_ref_pts_into_query_pos=False,
-                 query_pos_2d_ref_pts_encoding_method="mln", test_mode=False, **kwargs):
+                 query_pos_2d_ref_pts_encoding_method="mln", test_mode=False,
+                 residual_mode="add",
+                   **kwargs):
         super().__init__()
         if embed_dims % num_heads != 0:
             raise ValueError('embed_dims must be divisible by num_heads, but got {} and {}'.format(embed_dims, num_heads))
@@ -47,6 +49,7 @@ class CustomDeformAttn(BaseModule):
         self.value_proj = nn.Linear(embed_dims, embed_dims)
         self.output_proj = nn.Linear(embed_dims, embed_dims)
         self.python_ops_for_test = False
+        self.residual_mode=residual_mode
 
         # self._reset_parameters()
         self.proj_drop = nn.Dropout(proj_drop)
@@ -298,7 +301,10 @@ class CustomDeformAttn(BaseModule):
         output = self.postprocess(output, **kwargs)
         assert output.shape == identity.shape
 
-        output = identity + self.proj_drop(output)
+        if self.residual_mode == "cat":
+            output = torch.cat([output, identity])
+        else:
+            output = identity + self.proj_drop(output)
 
         self._iter += 1
 
