@@ -38,14 +38,7 @@ class IQTransformerEncoder(TransformerLayerSequence):
                  use_inv_sigmoid=False, 
                  use_sigmoid_on_attn_out=False, 
                  num_classes=10, 
-                 match_with_velo=False, 
-                 code_weights=None, 
-                 match_costs=None, 
-                 sync_cls_avg_factor=False, 
-                 train_cfg=None, 
-                 loss_cls=None, 
-                 loss_bbox=None, 
-                 loss_iou=None, 
+                 limit_3d_pts_to_pc_range=True,
                  ## sparsification
                  mask_predictor=None,
                  sparse_rho=1.0, 
@@ -60,6 +53,15 @@ class IQTransformerEncoder(TransformerLayerSequence):
                  encode_ref_pts_depth_into_query_pos=False, 
                  ref_pts_depth_encoding_method=None,
                  encode_3dpos_method="add",
+                 ## loss
+                 match_with_velo=False, 
+                 code_weights=None, 
+                 match_costs=None, 
+                 sync_cls_avg_factor=False, 
+                 train_cfg=None, 
+                 loss_cls=None, 
+                 loss_bbox=None, 
+                 loss_iou=None, 
                  **kwargs):
         self.fp16_enabled=False
         if train_cfg:
@@ -80,6 +82,8 @@ class IQTransformerEncoder(TransformerLayerSequence):
         self.sync_cls_avg_factor = sync_cls_avg_factor
 
         super(IQTransformerEncoder, self).__init__(*args, **kwargs)
+
+        self.limit_3d_pts_to_pc_range=limit_3d_pts_to_pc_range
         self.pc_range = nn.Parameter(torch.tensor(pc_range), requires_grad=False)
         if mlvl_feats_formats != 1:
             raise NotImplementedError("encoder only supports mlvl feats format 1")
@@ -313,14 +317,14 @@ class IQTransformerEncoder(TransformerLayerSequence):
             img2lidar = torch.gather(img2lidar, 1, top_rho_inds[...,None,None].repeat(1, 1, *img2lidar.shape[-2:]))
             
             # [B, h0*N*w0+..., 3]
-            output_proposals = Projections.project_2p5d_cam_to_3d_lidar(ref_pts_2p5d_unnorm, img2lidar, 
-                                                     pc_range=self.pc_range)
+            output_proposals = Projections.project_2p5d_cam_to_3d_lidar(ref_pts_2p5d_unnorm, img2lidar)
   
             if do_debug_process(self, repeating=True, interval=500): 
                 prop_out_of_range=not_in_lidar_range(output_proposals, self.pc_range).sum().item()/output_proposals.numel()
                 print(f"proportion of output proposals out of range: {prop_out_of_range}")
-            output_proposals = clamp_to_lidar_range(output_proposals, self.pc_range)
-            output_proposals = normalize_lidar(output_proposals, self.pc_range)
+            if self.limit_3d_pts_to_pc_range:
+                output_proposals = clamp_to_lidar_range(output_proposals, self.pc_range)
+                output_proposals = normalize_lidar(output_proposals, self.pc_range)
         else:
             raise NotImplementedError()
         
@@ -359,6 +363,7 @@ class IQTransformerEncoder(TransformerLayerSequence):
         out_cls=self.cls_branches[level](query_out) # [B, p, num_classes]
         out_coord_offset = self.reg_branches[level](query_out) # [B, p, num_classes]
         if self.use_sigmoid_on_attn_out:
+            raise NotImplementedError()
             if do_debug_process(self): print("ENCODER: using sigmoid on attention out")
             out_coord_offset[..., :3] = F.sigmoid(out_coord_offset[..., :3])
             out_coord_offset[..., :3] = denormalize_lidar(out_coord_offset[..., :3], self.pc_range)
@@ -369,8 +374,9 @@ class IQTransformerEncoder(TransformerLayerSequence):
             output_proposals_unnormalized = inverse_sigmoid(output_proposals)
         else:
             if do_debug_process(self): print("NOT using inverse sigmoid")
-            output_proposals_unnormalized = denormalize_lidar(output_proposals, self.pc_range)
-            assert not_in_lidar_range(output_proposals_unnormalized, self.pc_range).sum() == 0
+            if self.limit_3d_pts_to_pc_range:
+                output_proposals_unnormalized = denormalize_lidar(output_proposals, self.pc_range)
+                assert not_in_lidar_range(output_proposals_unnormalized, self.pc_range).sum() == 0
         
         if level == 0:
             assert out_coord[..., :3].shape == output_proposals_unnormalized.shape
@@ -381,7 +387,7 @@ class IQTransformerEncoder(TransformerLayerSequence):
             out_coord[..., :3]=out_coord[..., :3].sigmoid()
             out_coord[..., :3]=denormalize_lidar(out_coord[..., :3], self.pc_range)
             out_coord_final=out_coord
-        else:
+        elif self.limit_3d_pts_to_pc_range:
             out_coord_final = clamp_to_lidar_range(out_coord.clone(), self.pc_range)
         
 

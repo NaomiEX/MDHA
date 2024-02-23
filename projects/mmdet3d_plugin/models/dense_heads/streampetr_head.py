@@ -165,29 +165,28 @@ class StreamPETRHead(AnchorFreeHead):
         self._init_layers()
         self.reset_memory()
 
-        cls_branch = []
-        for _ in range(self.num_reg_fcs):
-            cls_branch.append(Linear(self.embed_dims, self.embed_dims))
-            cls_branch.append(nn.LayerNorm(self.embed_dims))
-            cls_branch.append(nn.ReLU(inplace=True))
-        if self.normedlinear:
-            cls_branch.append(NormedLinear(self.embed_dims, self.cls_out_channels))
-        else:
-            cls_branch.append(Linear(self.embed_dims, self.cls_out_channels))
-        fc_cls = nn.Sequential(*cls_branch)
+        # cls_branch = []
+        # for _ in range(self.num_reg_fcs):
+        #     cls_branch.append(Linear(self.embed_dims, self.embed_dims))
+        #     cls_branch.append(nn.LayerNorm(self.embed_dims))
+        #     cls_branch.append(nn.ReLU(inplace=True))
+        # if self.normedlinear:
+        #     cls_branch.append(NormedLinear(self.embed_dims, self.cls_out_channels))
+        # else:
+        #     cls_branch.append(Linear(self.embed_dims, self.cls_out_channels))
+        # fc_cls = nn.Sequential(*cls_branch)
 
-        reg_branch = []
-        for _ in range(self.num_reg_fcs):
-            reg_branch.append(Linear(self.embed_dims, self.embed_dims))
-            reg_branch.append(nn.ReLU())
-        reg_branch.append(Linear(self.embed_dims, self.code_size))
-        reg_branch = nn.Sequential(*reg_branch)
+        # reg_branch = []
+        # for _ in range(self.num_reg_fcs):
+        #     reg_branch.append(Linear(self.embed_dims, self.embed_dims))
+        #     reg_branch.append(nn.ReLU())
+        # reg_branch.append(Linear(self.embed_dims, self.code_size))
+        # reg_branch = nn.Sequential(*reg_branch)
 
-        num_branches = self.num_decoder_layers
-        self.cls_branches = nn.ModuleList(
-            [deepcopy(fc_cls) for _ in range(num_branches)])
-        self.reg_branches = nn.ModuleList(
-            [deepcopy(reg_branch) for _ in range(num_branches)])
+        # self.cls_branches = nn.ModuleList(
+        #     [deepcopy(fc_cls) for _ in range(num_branches)])
+        # self.reg_branches = nn.ModuleList(
+        #     [deepcopy(reg_branch) for _ in range(num_branches)])
 
 
     def _init_layers(self):
@@ -268,11 +267,11 @@ class StreamPETRHead(AnchorFreeHead):
             self.memory_reference_point[:, :self.num_propagated]  = self.memory_reference_point[:, :self.num_propagated] + (1 - x).view(B, 1, 1) * pseudo_reference_points
             self.memory_egopose[:, :self.num_propagated]  = self.memory_egopose[:, :self.num_propagated] + (1 - x).view(B, 1, 1, 1) * torch.eye(4, device=x.device)
 
-    def post_update_memory(self, data, rec_ego_pose, all_cls_scores, all_bbox_preds, outs_dec, mask_dict):
+    def post_update_memory(self, data, rec_ego_pose, all_cls_scores, all_bbox_preds, query_out, mask_dict):
         if self.training and mask_dict and mask_dict['pad_size'] > 0:
             rec_reference_points = all_bbox_preds[:, :, mask_dict['pad_size']:, :3][-1]
             rec_velo = all_bbox_preds[:, :, mask_dict['pad_size']:, -2:][-1]
-            rec_memory = outs_dec[:, :, mask_dict['pad_size']:, :][-1]
+            rec_memory = query_out[:, mask_dict['pad_size']:, :]
             # [B, pad_size+Q+propagated, 1]
             rec_score = all_cls_scores[:, :, mask_dict['pad_size']:, :][-1].sigmoid().topk(1, dim=-1).values[..., 0:1]
             rec_timestamp = torch.zeros_like(rec_score, dtype=torch.float64)
@@ -280,7 +279,7 @@ class StreamPETRHead(AnchorFreeHead):
         else:
             rec_reference_points = all_bbox_preds[..., :3][-1]
             rec_velo = all_bbox_preds[..., -2:][-1]
-            rec_memory = outs_dec[-1]
+            rec_memory = query_out
             rec_score = all_cls_scores[-1].sigmoid().topk(1, dim=-1).values[..., 0:1]
             rec_timestamp = torch.zeros_like(rec_score, dtype=torch.float64)
         
@@ -521,46 +520,46 @@ class StreamPETRHead(AnchorFreeHead):
         # out_ref_pts: sigmoided bbox predictions [num_dec_layers, B, Q, 3]
         # init_ref_pts: initial ref pts (in [0,1] range) [B, Q, 3]
         # NOTE: expecting all ref_pts to already be unnormalized
-        outs_dec, out_ref_pts, init_ref_pts = self.transformer(self.reg_branches, memory, tgt, query_pos, attn_mask,  
+        all_bbox_preds, all_cls_scores, query_out = self.transformer(self.reg_branches, memory, tgt, query_pos, attn_mask,  
                                         temp_memory=temp_memory, temp_pos=temp_pos,
                                         reference_points = reference_points.clone(), lidar2img=data['lidar2img'],
                                         extrinsics=data['extrinsics'], orig_spatial_shapes=orig_spatial_shapes, 
                                         flattened_spatial_shapes=flattened_spatial_shapes, 
                                         flattened_level_start_index=flattened_level_start_index,
                                         img_metas=img_metas)
-        outs_dec = torch.nan_to_num(outs_dec)
-        outputs_classes = []
-        outputs_coords = []
-        for lvl in range(outs_dec.shape[0]):
-            outputs_class = self.cls_branches[lvl](outs_dec[lvl]) # [B, Q, num_classes]
-            out_coord_offset = self.reg_branches[lvl](outs_dec[lvl]) # [B, Q, 10]
-            if self.use_sigmoid_on_attn_out:
-                out_coord_offset[..., :3] = F.sigmoid(out_coord_offset[..., :3])
-                out_coord_offset[..., :3] = denormalize_lidar(out_coord_offset[..., :3], self.pc_range)
-            out_coord = out_coord_offset
-            if lvl == 0:
-                out_coord[..., 0:3] += init_ref_pts[..., 0:3]
+        # outs_dec = torch.nan_to_num(outs_dec)
+        # outputs_classes = []
+        # outputs_coords = []
+        # for lvl in range(outs_dec.shape[0]):
+        #     outputs_class = self.cls_branches[lvl](outs_dec[lvl]) # [B, Q, num_classes]
+        #     out_coord_offset = self.reg_branches[lvl](outs_dec[lvl]) # [B, Q, 10]
+        #     if self.use_sigmoid_on_attn_out:
+        #         out_coord_offset[..., :3] = F.sigmoid(out_coord_offset[..., :3])
+        #         out_coord_offset[..., :3] = denormalize_lidar(out_coord_offset[..., :3], self.pc_range)
+        #     out_coord = out_coord_offset
+        #     if lvl == 0:
+        #         out_coord[..., 0:3] += init_ref_pts[..., 0:3]
                 
-            else:
-                out_coord[..., 0:3] += out_ref_pts[lvl-1][..., 0:3]
+        #     else:
+        #         out_coord[..., 0:3] += out_ref_pts[lvl-1][..., 0:3]
             
 
-            outputs_classes.append(outputs_class)
-            outputs_coords.append(out_coord)
+        #     outputs_classes.append(outputs_class)
+        #     outputs_coords.append(out_coord)
 
-        all_cls_scores = torch.stack(outputs_classes) # [n_dec_layers, B, Q, num_classes]
-        all_bbox_preds = torch.stack(outputs_coords) # [n_dec_layers, B, Q, 10]
+        # all_cls_scores = torch.stack(outputs_classes) # [n_dec_layers, B, Q, num_classes]
+        # all_bbox_preds = torch.stack(outputs_coords) # [n_dec_layers, B, Q, 10]
         
         ## center point post processing
-        if self.use_inv_sigmoid:
-            out_coord[..., 0:3] = out_coord[..., 0:3].sigmoid()
-        if self.use_inv_sigmoid:
-            all_bbox_preds[..., 0:3] = denormalize_lidar(all_bbox_preds[..., 0:3], self.pc_range)
-        else:
-            all_bbox_preds = clamp_to_lidar_range(all_bbox_preds, self.pc_range)
+        # if self.use_inv_sigmoid:
+        #     out_coord[..., 0:3] = out_coord[..., 0:3].sigmoid()
+        # if self.use_inv_sigmoid:
+        #     all_bbox_preds[..., 0:3] = denormalize_lidar(all_bbox_preds[..., 0:3], self.pc_range)
+        # else:
+        #     all_bbox_preds = clamp_to_lidar_range(all_bbox_preds, self.pc_range)
         
         # update the memory bank
-        self.post_update_memory(data, rec_ego_pose, all_cls_scores, all_bbox_preds, outs_dec, mask_dict)
+        self.post_update_memory(data, rec_ego_pose, all_cls_scores, all_bbox_preds, query_out, mask_dict)
 
         if mask_dict and mask_dict['pad_size'] > 0:
             output_known_class = all_cls_scores[:, :, :mask_dict['pad_size'], :]

@@ -1,8 +1,11 @@
+from copy import deepcopy
 import warnings
 import torch
 # import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
+
+from mmcv.cnn import Linear, bias_init_with_prob
 from mmcv.cnn.bricks.transformer import (BaseTransformerLayer,
                                          TransformerLayerSequence,
                                          build_transformer_layer_sequence,
@@ -128,131 +131,6 @@ class PETRMultiheadAttention(BaseModule):
 
         return identity + self.dropout_layer(self.proj_drop(out))
 
-@TRANSFORMER_LAYER_SEQUENCE.register_module()
-class PETRTransformerDecoder(TransformerLayerSequence):
-    """Implements the decoder in DETR transformer.
-    Args:
-        return_intermediate (bool): Whether to return intermediate outputs.
-        post_norm_cfg (dict): Config of last normalization layer. Default：
-            `LN`.
-    """
-
-    def __init__(self,
-                 *args,
-                 post_norm_cfg=dict(type='LN'),
-                 return_intermediate=False,
-                 pc_range=None,
-                 two_stage=False,
-                 ref_pts_mode="single",
-                 use_inv_sigmoid=False,
-                 use_sigmoid_on_attn_out=False,
-                 **kwargs):
-        super(PETRTransformerDecoder, self).__init__(*args, **kwargs)
-        self.pc_range = nn.Parameter(torch.tensor(
-            pc_range), requires_grad=False)
-        self.return_intermediate = return_intermediate
-        if post_norm_cfg is not None:
-            self.post_norm = build_norm_layer(post_norm_cfg,
-                                              self.embed_dims)[1]
-        else:
-            self.post_norm = None
-        self.ref_pts_mode = ref_pts_mode
-        assert self.ref_pts_mode in ["single", "multiple"]
-        self.two_stage=two_stage
-        self.use_inv_sigmoid=use_inv_sigmoid
-        self.use_sigmoid_on_attn_out=use_sigmoid_on_attn_out
-        
-
-    def forward(self, bbox_embed, query, *args, reference_points=None, lidar2img=None, extrinsics=None, 
-                orig_spatial_shapes=None, img_metas=None, num_cameras=6, **kwargs):
-        if not self.return_intermediate:
-            x = super().forward(query, *args, reference_points=None, **kwargs)
-            if self.post_norm:
-                x = self.post_norm(x)[None]
-            return x
-
-        intermediate = []
-        intermediate_reference_points = []
-
-        cam_transformations = dict(lidar2img=lidar2img, lidar2cam=extrinsics)
-
-        for lid, layer in enumerate(self.layers):
-            if self.use_inv_sigmoid:
-                ref_pts_unnormalized = inverse_sigmoid(reference_points.clone()) # R: lidar space
-            else:
-                ref_pts_unnormalized = denormalize_lidar(reference_points.clone(), self.pc_range) # R:lidar space
-            if lid == 0:
-                init_reference_point =ref_pts_unnormalized.clone()
-            # [B, Q, 2]
-            with torch.no_grad():
-                if self.ref_pts_mode == "single":
-                    reference_points_2d_cam, _ = convert_3d_to_2d_global_cam_ref_pts(cam_transformations,
-                                                                        ref_pts_unnormalized, orig_spatial_shapes,
-                                                                        img_metas, ret_num_non_matches=True)
-                    
-                    
-                    num_second_matches, second_matches_valid_idxs, idx_with_second_match = [None]*3
-                elif self.ref_pts_mode == "multiple":
-                    if do_debug_process(self): print("DECODER: USING MULTIPLE REF PTS")
-                    ref_pts_mult_outs = convert_3d_to_mult_2d_global_cam_ref_pts(cam_transformations,
-                                                                    ref_pts_unnormalized, orig_spatial_shapes,
-                                                                    img_metas, 
-                                                                    ret_num_non_matches=with_debug(self))
-                    reference_points_2d_cam, num_second_matches, second_matches_valid_idxs, idx_with_second_match = \
-                        ref_pts_mult_outs[:4]
-                    if do_debug_process(self, repeating=True):
-                        non_matches = ref_pts_mult_outs[4]
-                        num_non_match_prop = non_matches.sum(1) / non_matches.size(-1)
-                        num_second_matches_prop = second_matches_valid_idxs[1].size(0) / reference_points_2d_cam.size(1)
-                        debug_msg=f"3d->2d @ decoder layer {lid}, non matches prop.: {num_non_match_prop}, second match prop.: {num_second_matches_prop}"
-                        print(f"num second matches @ decoder layer {lid}: {num_second_matches}")
-                        self.debug_logger.info(debug_msg)
-                        print(debug_msg)
-
-            # query: [B, Q, C]
-            # sampling_locs: [B, Q, n_heads, n_levels, n_points, 2]
-            # attn_weights: [B, Q, n_heads, n_levels, n_points]
-            query = layer(query, *args, reference_points=reference_points_2d_cam, 
-                                orig_spatial_shapes=orig_spatial_shapes, num_cameras=6, 
-                                num_second_matches=num_second_matches, second_matches_valid_idxs=second_matches_valid_idxs,
-                                idx_with_second_match=idx_with_second_match,
-                                **kwargs)
-            # hack implementation for iterative bounding box refinement
-            assert bbox_embed is not None
-            query_out=torch.nan_to_num(query)
-            if bbox_embed is not None:
-                assert ref_pts_unnormalized is not None, "box refinement needs reference points!"
-                coord_offset = bbox_embed[lid](query_out) # [B, Q, 10]
-                if self.use_sigmoid_on_attn_out:
-                    if do_debug_process(self): print("PETR_TRANSFORMER: using sigmoid on attn out")
-                    coord_offset[..., :3] = F.sigmoid(coord_offset[..., :3])
-                    coord_offset[..., :3] = denormalize_lidar(coord_offset[..., :3], self.pc_range)
-                coord_pred = coord_offset
-                assert ref_pts_unnormalized.shape[-1] == 3
-                coord_pred[..., 0:3] = coord_pred[..., 0:3] + ref_pts_unnormalized[..., 0:3]
-                if self.use_inv_sigmoid:
-                    coord_pred[..., 0:3] = coord_pred[..., 0:3].sigmoid()
-                    next_ref_pts = coord_pred[..., 0:3].detach().clone()
-                    unnormalized_ref_pts = inverse_sigmoid(coord_pred[..., 0:3].detach().clone())
-                else:
-                    if do_debug_process(self, repeating=True, interval=500):
-                        prop_out_of_range = not_in_lidar_range(coord_pred[..., 0:3], self.pc_range).sum().item() / coord_pred.size(1)
-                        print(f"coord prediction within decoder layer {lid} out of range: {prop_out_of_range}")
-                    coord_pred[..., 0:3] = clamp_to_lidar_range(coord_pred[..., 0:3], self.pc_range)
-                    unnormalized_ref_pts = coord_pred[..., 0:3].detach().clone()
-                    next_ref_pts = normalize_lidar(coord_pred[..., 0:3].detach().clone(), self.pc_range)
-
-            if self.return_intermediate:
-                intermediate_reference_points.append(unnormalized_ref_pts)
-                if self.post_norm is not None:
-                    intermediate.append(self.post_norm(query))
-                else:
-                    intermediate.append(query)
-            reference_points = next_ref_pts
-
-        return torch.stack(intermediate), torch.stack(intermediate_reference_points), init_reference_point
-
-
 @TRANSFORMER.register_module()
 class PETRTemporalTransformer(BaseModule):
 
@@ -268,9 +146,16 @@ class PETRTemporalTransformer(BaseModule):
 
     def init_weights(self):
         # follow the official DETR to init parameters
+        for name, p in self.named_parameters():
+            if 'reg' in name or 'cls' in name: 
+                continue
+            if p.dim() > 1 and p.requires_grad:
+                nn.init.xavier_uniform_(p)
+
         for m in self.modules():
-            if hasattr(m, 'weight') and m.weight.dim() > 1:
-                xavier_init(m, distribution='uniform')
+            if hasattr(m, "init_weights"):
+                m.init_weights()
+
         # custom init for attention
         for i in range(self.decoder.num_layers):
             for attn in self.decoder.layers[i].attentions:
@@ -313,6 +198,158 @@ class PETRTemporalTransformer(BaseModule):
             )
         return outs_decoder
 
+@TRANSFORMER_LAYER_SEQUENCE.register_module()
+class PETRTransformerDecoder(TransformerLayerSequence):
+    """Implements the decoder in DETR transformer.
+    Args:
+        return_intermediate (bool): Whether to return intermediate outputs.
+        post_norm_cfg (dict): Config of last normalization layer. Default：
+            `LN`.
+    """
+
+    def __init__(self,
+                 *args,
+                 post_norm_cfg=dict(type='LN'),
+                 return_intermediate=False,
+                 pc_range=None,
+                 two_stage=False,
+                 ref_pts_mode="single",
+                 use_inv_sigmoid=False,
+                 use_sigmoid_on_attn_out=False,
+                 num_reg_fcs=2,
+                 **kwargs):
+        super(PETRTransformerDecoder, self).__init__(*args, **kwargs)
+        self.pc_range = nn.Parameter(torch.tensor(
+            pc_range), requires_grad=False)
+        self.return_intermediate = return_intermediate
+        if post_norm_cfg is not None:
+            self.post_norm = build_norm_layer(post_norm_cfg,
+                                              self.embed_dims)[1]
+        else:
+            self.post_norm = None
+        self.ref_pts_mode = ref_pts_mode
+        assert self.ref_pts_mode in ["single", "multiple"]
+        self.two_stage=two_stage
+        self.use_inv_sigmoid=use_inv_sigmoid
+        self.use_sigmoid_on_attn_out=use_sigmoid_on_attn_out
+
+        cls_branch = []
+        for _ in range(num_reg_fcs):
+            cls_branch.append(Linear(self.embed_dims, self.embed_dims))
+            cls_branch.append(nn.LayerNorm(self.embed_dims))
+            cls_branch.append(nn.ReLU(inplace=True))
+        cls_branch.append(Linear(self.embed_dims, self.cls_out_channels))
+        cls_branch = nn.Sequential(*cls_branch)
+
+        reg_branch = []
+        for _ in range(num_reg_fcs):
+            reg_branch.append(Linear(self.embed_dims, self.embed_dims))
+            reg_branch.append(nn.ReLU())
+        reg_branch.append(Linear(self.embed_dims, self.code_size))
+        reg_branch = nn.Sequential(*reg_branch)
+
+        self.cls_branches = nn.ModuleList(
+            [deepcopy(cls_branch) for _ in range(self.num_layers)])
+        self.reg_branches = nn.ModuleList(
+            [deepcopy(reg_branch) for _ in range(self.num_layers)])
+
+    def init_weights(self):
+        bias_init = bias_init_with_prob(0.01)
+        nn.init.constant_(self.cls_branch[-1].bias, bias_init)
+        
+
+    def forward(self, query, *args, reference_points=None, lidar2img=None, extrinsics=None, 
+                orig_spatial_shapes=None, img_metas=None, num_cameras=6, **kwargs):
+        if not self.return_intermediate:
+            x = super().forward(query, *args, reference_points=None, **kwargs)
+            if self.post_norm:
+                x = self.post_norm(x)[None]
+            return x
+
+        # intermediate = []
+        # intermediate_reference_points = []
+        bbox_preds=[]
+        cls_preds=[]
+
+        cam_transformations = dict(lidar2img=lidar2img, lidar2cam=extrinsics)
+
+        for lid, layer in enumerate(self.layers):
+            if self.use_inv_sigmoid:
+                ref_pts_unnormalized = inverse_sigmoid(reference_points.clone()) # R: lidar space
+            else:
+                ref_pts_unnormalized = denormalize_lidar(reference_points.clone(), self.pc_range) # R:lidar space
+            # if lid == 0:
+            #     init_reference_point =ref_pts_unnormalized.clone()
+            # [B, Q, 2]
+            with torch.no_grad():
+                if self.ref_pts_mode == "single":
+                    reference_points_2d_cam, _ = convert_3d_to_2d_global_cam_ref_pts(cam_transformations,
+                                                                        ref_pts_unnormalized, orig_spatial_shapes,
+                                                                        img_metas, ret_num_non_matches=True)
+                    
+                    
+                    num_second_matches, second_matches_valid_idxs, idx_with_second_match = [None]*3
+                elif self.ref_pts_mode == "multiple":
+                    if do_debug_process(self): print("DECODER: USING MULTIPLE REF PTS")
+                    ref_pts_mult_outs = convert_3d_to_mult_2d_global_cam_ref_pts(cam_transformations,
+                                                                    ref_pts_unnormalized, orig_spatial_shapes,
+                                                                    img_metas, 
+                                                                    ret_num_non_matches=with_debug(self))
+                    reference_points_2d_cam, num_second_matches, second_matches_valid_idxs, idx_with_second_match = \
+                        ref_pts_mult_outs[:4]
+                    if do_debug_process(self, repeating=True):
+                        non_matches = ref_pts_mult_outs[4]
+                        num_non_match_prop = non_matches.sum(1) / non_matches.size(-1)
+                        num_second_matches_prop = second_matches_valid_idxs[1].size(0) / reference_points_2d_cam.size(1)
+                        debug_msg=f"3d->2d @ decoder layer {lid}, non matches prop.: {num_non_match_prop}, second match prop.: {num_second_matches_prop}"
+                        print(f"num second matches @ decoder layer {lid}: {num_second_matches}")
+                        self.debug_logger.info(debug_msg)
+                        print(debug_msg)
+
+            # query: [B, Q, C]
+            # sampling_locs: [B, Q, n_heads, n_levels, n_points, 2]
+            # attn_weights: [B, Q, n_heads, n_levels, n_points]
+            query = layer(query, *args, reference_points=reference_points_2d_cam, 
+                                orig_spatial_shapes=orig_spatial_shapes, num_cameras=6, 
+                                num_second_matches=num_second_matches, second_matches_valid_idxs=second_matches_valid_idxs,
+                                idx_with_second_match=idx_with_second_match,
+                                **kwargs)
+            query_out = self.post_norm(query) if self.post_norm else query
+            query_out=torch.nan_to_num(query_out)
+
+            assert ref_pts_unnormalized is not None, "box refinement needs reference points!"
+            cls_pred = self.cls_branches[lid](query_out)
+            coord_offset = self.reg_branches[lid](query_out) # [B, Q, 10]
+            if self.use_sigmoid_on_attn_out:
+                if do_debug_process(self): print("PETR_TRANSFORMER: using sigmoid on attn out")
+                coord_offset[..., :3] = F.sigmoid(coord_offset[..., :3])
+                coord_offset[..., :3] = denormalize_lidar(coord_offset[..., :3], self.pc_range)
+            coord_pred = coord_offset
+            assert ref_pts_unnormalized.shape[-1] == 3
+            coord_pred[..., 0:3] = coord_pred[..., 0:3] + ref_pts_unnormalized[..., 0:3]
+            if self.use_inv_sigmoid:
+                coord_pred[..., 0:3] = coord_pred[..., 0:3].sigmoid()
+                next_ref_pts = coord_pred[..., 0:3].detach().clone()
+                # unnormalized_ref_pts = inverse_sigmoid(coord_pred[..., 0:3].detach().clone())
+            else:
+                if do_debug_process(self, repeating=True, interval=500):
+                    prop_out_of_range = not_in_lidar_range(coord_pred[..., 0:3], self.pc_range).sum().item() / coord_pred.size(1)
+                    print(f"coord prediction within decoder layer {lid} out of range: {prop_out_of_range}")
+                coord_pred[..., 0:3] = clamp_to_lidar_range(coord_pred[..., 0:3], self.pc_range)
+                # unnormalized_ref_pts = coord_pred[..., 0:3].detach().clone()
+                next_ref_pts = normalize_lidar(coord_pred[..., 0:3].detach().clone(), self.pc_range)
+
+            bbox_preds.append(coord_pred)
+            cls_preds.append(cls_pred)
+            # if self.return_intermediate:
+            #     intermediate_reference_points.append(unnormalized_ref_pts)
+            #     if self.post_norm is not None:
+            #         intermediate.append(self.post_norm(query))
+            #     else:
+            #         intermediate.append(query)
+            reference_points = next_ref_pts
+
+        return torch.stack(bbox_preds), torch.stack(cls_preds), query_out
 
 @TRANSFORMER_LAYER.register_module()
 class PETRTemporalDecoderLayer(BaseModule):

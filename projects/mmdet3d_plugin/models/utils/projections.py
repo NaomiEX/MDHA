@@ -285,41 +285,6 @@ class Projections:
         proj_pts = torch.matmul(img2lidar, coords).squeeze(-1)[..., :3] # [B, ..., 3]
         # collect % of values out of range
         # collect distribution of (x,y,z) values
-        # ! WARNING THIS SHOULD ONLY BE USED DURING DEBUG BECAUSE IT IS EXPENSIVE
-        if collect_stats:
-            print("WARNING!! USING COLLECT STATS")
-            assert logger is not None
-            assert pc_range is not None and len(pc_range) == 6
-            for bid in range(B):
-                proj_pts_bid = proj_pts[bid]
-                mask_xy = (proj_pts_bid[..., 0] < pc_range[0]) | (proj_pts_bid[..., 0] > pc_range[3]) | \
-                            (proj_pts_bid[..., 1] < pc_range[1]) | (proj_pts_bid[..., 1] > pc_range[4])
-                mask_full = mask_xy | (proj_pts_bid[..., 2] < pc_range[2]) | (proj_pts_bid[..., 2] > pc_range[5])
-                frac_invalid_xy = mask_xy.sum() / proj_pts_bid.numel()
-                frac_invalid_full = mask_full.sum() / proj_pts_bid.numel()
-                clamped_proj_pts = clamp_to_lidar_range(proj_pts_bid.clone(), pc_range)
-                boundaries_x = torch.arange(pc_range[0] + 1.0, pc_range[3], step=1.0, device=cam_pts_2p5d.device)
-                boundaries_y = torch.arange(pc_range[1]+1.0, pc_range[4], step=1.0, device=cam_pts_2p5d.device)
-                boundaries_z = torch.arange(pc_range[2]+1.0, pc_range[5], step=1.0, device=cam_pts_2p5d.device)
-                bx = torch.bucketize(clamped_proj_pts[..., 0], boundaries_x)
-                by = torch.bucketize(clamped_proj_pts[..., 1], boundaries_y)
-                bz = torch.bucketize(clamped_proj_pts[..., 2], boundaries_z)
-                counts_x = boundaries_x.new_zeros(len(boundaries_x) + 1)
-                counts_y = boundaries_x.new_zeros(len(boundaries_y) + 1)
-                counts_z = boundaries_x.new_zeros(len(boundaries_z) + 1)
-                for ex, ey, ez in zip(bx.flatten(), by.flatten(), bz.flatten()):
-                    counts_x[ex] += 1
-                    counts_y[ey] += 1
-                    counts_z[ez] += 1
-                boundaries_x = torch.cat([boundaries_x, boundaries_x.new_tensor([pc_range[3]])], -1)
-                boundaries_y = torch.cat([boundaries_y, boundaries_y.new_tensor([pc_range[4]])], -1)
-                boundaries_z = torch.cat([boundaries_z, boundaries_z.new_tensor([pc_range[5]])], -1)
-                bwc_x = torch.stack([boundaries_x, counts_x], -1)
-                bwc_y = torch.stack([boundaries_y, counts_y], -1)
-                bwc_z = torch.stack([boundaries_z, counts_z], -1)
-                logger.info(f"========== 2.5d->3d reference points for img batch {bid}: ==========\n"
-                            f"fraction invalid (xy): {frac_invalid_xy} | fraction invalid (xyz): {frac_invalid_full}\n"
-                            f"distribution x: \n{bwc_x}\ndistribution y: \n{bwc_y}\ndistribution z: \n{bwc_z}")
         return proj_pts
     
 

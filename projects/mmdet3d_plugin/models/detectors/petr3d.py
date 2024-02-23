@@ -38,10 +38,13 @@ class Petr3D(MVXTwoStageDetector):
                  encoder=None,
                  num_cameras=6,
                  pc_range=None,
-                 debug_args=None,
+                 limit_3d_pts_to_pc_range=True,
+                 ## depth
                  depth_net=None,
                  depth_pred_position=0,
                  calc_depth_pred_loss=False,
+                 ## debug
+                 debug_args=None,
                  ):
         if depth_net is not None:
             depth_net['depth_pred_position'] = depth_pred_position
@@ -68,6 +71,7 @@ class Petr3D(MVXTwoStageDetector):
         self.prev_scene_token = None
         self.num_frame_backbone_grads = num_frame_backbone_grads
         self.test_flag = False
+        self.limit_3d_pts_to_pc_range=limit_3d_pts_to_pc_range
 
         ## new params
         self.strides=strides
@@ -203,13 +207,6 @@ class Petr3D(MVXTwoStageDetector):
                                       return_losses=True, **data_t)
         return loss
 
-
-    def prepare_location(self, img_metas, **data):
-        pad_h, pad_w, _ = img_metas[0]['pad_shape'][0]
-        bs, n = data['img_feats'].shape[:2]
-        x = data['img_feats'].flatten(0, 1)
-        location = locations(x, self.stride, pad_h, pad_w)[None].repeat(bs*n, 1, 1, 1)
-        return location
     
     def prepare_location_multiscale(self, img_metas, spatial_shapes, **data):
         assert self.mlvl_feats_format == MLVL_HNW
@@ -266,7 +263,8 @@ class Petr3D(MVXTwoStageDetector):
         topq_coords = torch.gather(enc_out_coord, 1, 
                                    topq_inds.unsqueeze(-1).repeat(1,1,enc_out_coord.size(-1)))
         reference_points_dec_init = topq_coords.detach()[..., :3] # [B, q, 3]
-        reference_points_dec_init = normalize_lidar(reference_points_dec_init, self.pc_range)
+        if self.limit_3d_pts_to_pc_range:
+            reference_points_dec_init = normalize_lidar(reference_points_dec_init, self.pc_range)
         query_dec_init = torch.gather(enc_out_memory, 1, 
                                       topq_inds.unsqueeze(-1).repeat(1, 1, enc_out_memory.size(-1)))
         outs = dict(reference_points_dec_init=reference_points_dec_init, query_dec_init=query_dec_init)
