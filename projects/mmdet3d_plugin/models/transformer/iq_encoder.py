@@ -243,8 +243,6 @@ class IQTransformerEncoder(TransformerLayerSequence):
     def forward(self, src, orig_spatial_shapes, flattened_spatial_shapes, 
                 flattened_level_start_index, pos, img_metas, locations_flatten, 
                 depth_pred=None, lidar2img=None, **data):
-        assert self.use_pos_embed3d
-        assert self.use_spatial_alignment
 
         B = src.size(0)
         n_feat_levels = orig_spatial_shapes.size(0)
@@ -253,6 +251,7 @@ class IQTransformerEncoder(TransformerLayerSequence):
 
         src = self.src_embed(src) # [B, h0*N*w0+..., C] # M:0.55GB
         
+        img2lidar=None
         if self.use_pos_embed3d:
             # pos_embed3d: [B, h0*N*w0+..., C],  cone: [B, h0*N*w0+..., 8], img2lidar: # [B, h0*N*w0+..., 4, 4]
             # mem:1.8GB
@@ -272,6 +271,14 @@ class IQTransformerEncoder(TransformerLayerSequence):
                 pos = pos + pos_embed3d
             elif self.encode_3dpos_method == "mln":
                 pos = self.pos3d_encoding(pos, pos_embed3d)
+        else:
+            if do_debug_process(self): print("NOT USING 3D POS IN ENCODER")
+            img2lidar = []
+            i2l = torch.inverse(lidar2img.to('cpu')).to('cuda') # [B, N, 4, 4]
+            for (h, w) in orig_spatial_shapes:
+                i2l_i = i2l[:, None, :, None, :, :].expand(-1, h, -1, w, -1, -1)
+                img2lidar.append(i2l_i.flatten(1, 3)) # [B, h*N*w, 4, 4]
+            img2lidar = torch.cat(img2lidar, 1) # [B, h0*N*w0+..., 4, 4]
         
         pos_orig=pos.detach().clone()
         query, pos, top_rho_inds, mask_pred = self.sparsify_inputs(src, pos, n_sparse_tokens) # M: 1.977 GB
