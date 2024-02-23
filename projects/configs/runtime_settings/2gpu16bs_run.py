@@ -1,7 +1,7 @@
 num_gpus=2
 batch_size=8
 num_iters_per_epoch = 28130 // (num_gpus * batch_size)
-num_epochs = 25
+num_epochs = 100
 
 cfg_name = "mdha_2gpu16bs"
 debug_args = dict(
