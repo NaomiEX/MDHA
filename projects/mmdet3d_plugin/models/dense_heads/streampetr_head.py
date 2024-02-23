@@ -229,10 +229,10 @@ class StreamPETRHead(AnchorFreeHead):
             self.pseudo_reference_points.weight.requires_grad = False
 
         self.transformer.init_weights()
-        if self.loss_cls.use_sigmoid:
-            bias_init = bias_init_with_prob(0.01)
-            for m in self.cls_branches:
-                nn.init.constant_(m[-1].bias, bias_init)
+        # if self.loss_cls.use_sigmoid:
+        #     bias_init = bias_init_with_prob(0.01)
+        #     for m in self.cls_branches:
+        #         nn.init.constant_(m[-1].bias, bias_init)
        
     def reset_memory(self):
         self.memory_embedding = None
@@ -520,7 +520,7 @@ class StreamPETRHead(AnchorFreeHead):
         # out_ref_pts: sigmoided bbox predictions [num_dec_layers, B, Q, 3]
         # init_ref_pts: initial ref pts (in [0,1] range) [B, Q, 3]
         # NOTE: expecting all ref_pts to already be unnormalized
-        all_bbox_preds, all_cls_scores, query_out = self.transformer(self.reg_branches, memory, tgt, query_pos, attn_mask,  
+        all_bbox_preds, all_cls_scores, query_out = self.transformer(memory, tgt, query_pos, attn_mask,  
                                         temp_memory=temp_memory, temp_pos=temp_pos,
                                         reference_points = reference_points.clone(), lidar2img=data['lidar2img'],
                                         extrinsics=data['extrinsics'], orig_spatial_shapes=orig_spatial_shapes, 

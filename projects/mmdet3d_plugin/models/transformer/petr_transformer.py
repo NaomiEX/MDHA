@@ -153,6 +153,7 @@ class PETRTemporalTransformer(BaseModule):
                 nn.init.xavier_uniform_(p)
 
         for m in self.modules():
+            if m == self: continue
             if hasattr(m, "init_weights"):
                 m.init_weights()
 
@@ -160,13 +161,13 @@ class PETRTemporalTransformer(BaseModule):
         for i in range(self.decoder.num_layers):
             for attn in self.decoder.layers[i].attentions:
                 if isinstance(attn, CustomDeformAttn):
-                    assert attn.is_init == False
+                    # assert attn.is_init == False
                     attn.reset_parameters()
         
         self._is_init = True
 
 
-    def forward(self, bbox_embed, memory, tgt, query_pos, attn_masks, pos_embed=None,
+    def forward(self, memory, tgt, query_pos, attn_masks, pos_embed=None,
                 temp_memory=None, temp_pos=None, mask=None, reference_points=None, 
                 lidar2img=None, extrinsics=None, orig_spatial_shapes=None,
                 flattened_spatial_shapes=None, flattened_level_start_index=None,
@@ -178,7 +179,6 @@ class PETRTemporalTransformer(BaseModule):
         # out_ref_pts: [num_layers, B, Q, 3]
         # init_ref_pts: [B, Q, 3]
         outs_decoder = self.decoder(
-            bbox_embed=bbox_embed,
             query=tgt,
             key=memory if not self.two_stage else None,
             value=memory,
@@ -216,6 +216,8 @@ class PETRTransformerDecoder(TransformerLayerSequence):
                  ref_pts_mode="single",
                  use_inv_sigmoid=False,
                  use_sigmoid_on_attn_out=False,
+                 num_classes=10,
+                 anchor_dims=10,
                  num_reg_fcs=2,
                  **kwargs):
         super(PETRTransformerDecoder, self).__init__(*args, **kwargs)
@@ -238,14 +240,14 @@ class PETRTransformerDecoder(TransformerLayerSequence):
             cls_branch.append(Linear(self.embed_dims, self.embed_dims))
             cls_branch.append(nn.LayerNorm(self.embed_dims))
             cls_branch.append(nn.ReLU(inplace=True))
-        cls_branch.append(Linear(self.embed_dims, self.cls_out_channels))
+        cls_branch.append(Linear(self.embed_dims, num_classes))
         cls_branch = nn.Sequential(*cls_branch)
 
         reg_branch = []
         for _ in range(num_reg_fcs):
             reg_branch.append(Linear(self.embed_dims, self.embed_dims))
             reg_branch.append(nn.ReLU())
-        reg_branch.append(Linear(self.embed_dims, self.code_size))
+        reg_branch.append(Linear(self.embed_dims, anchor_dims))
         reg_branch = nn.Sequential(*reg_branch)
 
         self.cls_branches = nn.ModuleList(
@@ -255,7 +257,8 @@ class PETRTransformerDecoder(TransformerLayerSequence):
 
     def init_weights(self):
         bias_init = bias_init_with_prob(0.01)
-        nn.init.constant_(self.cls_branch[-1].bias, bias_init)
+        for m in self.cls_branches:
+            nn.init.constant_(m[-1].bias, bias_init)
         
 
     def forward(self, query, *args, reference_points=None, lidar2img=None, extrinsics=None, 
