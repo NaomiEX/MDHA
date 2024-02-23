@@ -1,14 +1,3 @@
-# ------------------------------------------------------------------------
-# Copyright (c) 2022 megvii-model. All Rights Reserved.
-# ------------------------------------------------------------------------
-# Modified from DETR3D (https://github.com/WangYueFt/detr3d)
-# Copyright (c) 2021 Wang, Yue
-# ------------------------------------------------------------------------
-# Modified from mmdetection3d (https://github.com/open-mmlab/mmdetection3d)
-# Copyright (c) OpenMMLab. All rights reserved.
-# ------------------------------------------------------------------------
-#  Modified by Shihao Wang
-# ------------------------------------------------------------------------
 import warnings
 import torch
 # import numpy as np
@@ -37,147 +26,7 @@ from mmcv.runner import auto_fp16
 from ..utils.projections import Projections, convert_3d_to_2d_global_cam_ref_pts, convert_3d_to_mult_2d_global_cam_ref_pts
 from ..utils.lidar_utils import denormalize_lidar, normalize_lidar, clamp_to_lidar_range, not_in_lidar_range
 from projects.mmdet3d_plugin.attentions.custom_deform_attn import CustomDeformAttn
-@ATTENTION.register_module()
-class PETRMultiheadFlashAttention(BaseModule):
-    """A wrapper for ``torch.nn.MultiheadAttention``.
-    This module implements MultiheadAttention with identity connection,
-    and positional encoding  is also passed as input.
-    Args:
-        embed_dims (int): The embedding dimension.
-        num_heads (int): Parallel attention heads.
-        attn_drop (float): A Dropout layer on attn_output_weights.
-            Default: 0.0.
-        proj_drop (float): A Dropout layer after `nn.MultiheadAttention`.
-            Default: 0.0.
-        dropout_layer (obj:`ConfigDict`): The dropout_layer used
-            when adding the shortcut.
-        init_cfg (obj:`mmcv.ConfigDict`): The Config for initialization.
-            Default: None.
-        batch_first (bool): When it is True,  Key, Query and Value are shape of
-            (batch, n, embed_dim), otherwise (n, batch, embed_dim).
-             Default to False.
-    """
-
-    def __init__(self,
-                 embed_dims,
-                 num_heads,
-                 attn_drop=0.,
-                 proj_drop=0.,
-                 dropout_layer=dict(type='Dropout', drop_prob=0.),
-                 init_cfg=None,
-                 batch_first=True,
-                 **kwargs):
-        super(PETRMultiheadFlashAttention, self).__init__(init_cfg)
-        if 'dropout' in kwargs:
-            warnings.warn(
-                'The arguments `dropout` in MultiheadAttention '
-                'has been deprecated, now you can separately '
-                'set `attn_drop`(float), proj_drop(float), '
-                'and `dropout_layer`(dict) ', DeprecationWarning)
-            attn_drop = kwargs['dropout']
-            dropout_layer['drop_prob'] = kwargs.pop('dropout')
-
-        self.embed_dims = embed_dims
-        self.num_heads = num_heads
-        self.batch_first = True
-
-        self.attn = FlashMHA(embed_dims, num_heads, attn_drop, dtype=torch.float16, device='cuda',
-                                          **kwargs)
-
-        self.proj_drop = nn.Dropout(proj_drop)
-        self.dropout_layer = build_dropout(
-            dropout_layer) if dropout_layer else nn.Identity()
-
-    @deprecated_api_warning({'residual': 'identity'},
-                            cls_name='MultiheadAttention')
-    def forward(self,
-                query,
-                key=None,
-                value=None,
-                identity=None,
-                query_pos=None,
-                key_pos=None,
-                attn_mask=None,
-                key_padding_mask=None,
-                **kwargs):
-        """Forward function for `MultiheadAttention`.
-        **kwargs allow passing a more general data flow when combining
-        with other operations in `transformerlayer`.
-        Args:
-            query (Tensor): The input query with shape [num_queries, bs,
-                embed_dims] if self.batch_first is False, else
-                [bs, num_queries embed_dims].
-            key (Tensor): The key tensor with shape [num_keys, bs,
-                embed_dims] if self.batch_first is False, else
-                [bs, num_keys, embed_dims] .
-                If None, the ``query`` will be used. Defaults to None.
-            value (Tensor): The value tensor with same shape as `key`.
-                Same in `nn.MultiheadAttention.forward`. Defaults to None.
-                If None, the `key` will be used.
-            identity (Tensor): This tensor, with the same shape as x,
-                will be used for the identity link.
-                If None, `x` will be used. Defaults to None.
-            query_pos (Tensor): The positional encoding for query, with
-                the same shape as `x`. If not None, it will
-                be added to `x` before forward function. Defaults to None.
-            key_pos (Tensor): The positional encoding for `key`, with the
-                same shape as `key`. Defaults to None. If not None, it will
-                be added to `key` before forward function. If None, and
-                `query_pos` has the same shape as `key`, then `query_pos`
-                will be used for `key_pos`. Defaults to None.
-            attn_mask (Tensor): ByteTensor mask with shape [num_queries,
-                num_keys]. Same in `nn.MultiheadAttention.forward`.
-                Defaults to None.
-            key_padding_mask (Tensor): ByteTensor with shape [bs, num_keys].
-                Defaults to None.
-        Returns:
-            Tensor: forwarded results with shape
-            [num_queries, bs, embed_dims]
-            if self.batch_first is False, else
-            [bs, num_queries embed_dims].
-        """
-
-        if key is None:
-            key = query
-        if value is None:
-            value = key
-        if identity is None:
-            identity = query
-        if key_pos is None:
-            if query_pos is not None:
-                # use query_pos if key_pos is not available
-                if query_pos.shape == key.shape:
-                    key_pos = query_pos
-                else:
-                    warnings.warn(f'position encoding of key is'
-                                  f'missing in {self.__class__.__name__}.')
-        if query_pos is not None:
-            query = query + query_pos
-        if key_pos is not None:
-            key = key + key_pos
-
-        # Because the dataflow('key', 'query', 'value') of
-        # ``torch.nn.MultiheadAttention`` is (num_query, batch,
-        # embed_dims), We should adjust the shape of dataflow from
-        # batch_first (batch, num_query, embed_dims) to num_query_first
-        # (num_query ,batch, embed_dims), and recover ``attn_output``
-        # from num_query_first to batch_first.
-        if self.batch_first:
-            query = query.transpose(0, 1)
-            key = key.transpose(0, 1)
-            value = value.transpose(0, 1)
-        
-        out = self.attn(
-            q=query,
-            k=key,
-            v=value,
-            key_padding_mask=None)[0]
-
-        if self.batch_first:
-            out = out.transpose(0, 1)
-
-        return identity + self.dropout_layer(self.proj_drop(out))
-
+from projects.mmdet3d_plugin.models.utils.debug import *
 
 class MultiheadAttentionWrapper(nn.MultiheadAttention):
     def __init__(self, *args, **kwargs):
@@ -199,24 +48,6 @@ class MultiheadAttentionWrapper(nn.MultiheadAttention):
 
 @ATTENTION.register_module()
 class PETRMultiheadAttention(BaseModule):
-    """A wrapper for ``torch.nn.MultiheadAttention``.
-    This module implements MultiheadAttention with identity connection,
-    and positional encoding  is also passed as input.
-    Args:
-        embed_dims (int): The embedding dimension.
-        num_heads (int): Parallel attention heads.
-        attn_drop (float): A Dropout layer on attn_output_weights.
-            Default: 0.0.
-        proj_drop (float): A Dropout layer after `nn.MultiheadAttention`.
-            Default: 0.0.
-        dropout_layer (obj:`ConfigDict`): The dropout_layer used
-            when adding the shortcut.
-        init_cfg (obj:`mmcv.ConfigDict`): The Config for initialization.
-            Default: None.
-        batch_first (bool): When it is True,  Key, Query and Value are shape of
-            (batch, n, embed_dim), otherwise (n, batch, embed_dim).
-             Default to False.
-    """
 
     def __init__(self,
                  embed_dims,
@@ -266,21 +97,6 @@ class PETRMultiheadAttention(BaseModule):
                 key_padding_mask=None,
                 inp_batch_first=True,
                 **kwargs):
-        """
-        Args:
-            query (_type_): current queries|prev queries; Tensor [B, Nq+num_propagated, 256]
-            key (_type_, optional):# [B, Nq + num_propagated + rest of memory, 256]
-            value (_type_, optional): # [B, Nq + num_propagated + rest of memory, 256]
-            identity (_type_, optional): _description_. Defaults to None.
-            query_pos (_type_, optional): query pos | prev query pos; Tensor [B, Nq+num_propagated, 256]
-            key_pos (_type_, optional): # [B, Nq + num_propagated + rest of memory, 256]
-            attn_mask (_type_, optional): temporal attention mask; [pad_size + Nq + num_propagated,  pad_size + Nq + memory_len]
-            key_padding_mask (_type_, optional): _description_. Defaults to None.
-            inp_batch_first (bool, optional): _description_. Defaults to True.
-
-        Returns:
-            _type_: _description_
-        """
         # todo: code to convert instead of assert
         assert (self.batch_first and inp_batch_first) or (self.batch_first == False and inp_batch_first == False)
         
@@ -303,17 +119,6 @@ class PETRMultiheadAttention(BaseModule):
         if key_pos is not None:
             key = key + key_pos
 
-        # Because the dataflow('key', 'query', 'value') of
-        # ``torch.nn.MultiheadAttention`` is (num_query, batch,
-        # embed_dims), We should adjust the shape of dataflow from
-        # batch_first (batch, num_query, embed_dims) to num_query_first
-        # (num_query ,batch, embed_dims), and recover ``attn_output``
-        # from num_query_first to batch_first.
-        # if self.batch_first:
-        #     query = query.transpose(0, 1).contiguous()
-        #     key = key.transpose(0, 1).contiguous()
-        #     value = value.transpose(0, 1).contiguous()
-
         out = self.attn(
             query=query,
             key=key,
@@ -321,42 +126,8 @@ class PETRMultiheadAttention(BaseModule):
             attn_mask=attn_mask,
             key_padding_mask=key_padding_mask)[0]
 
-        # if self.batch_first:
-        #     out = out.transpose(0, 1).contiguous()
 
         return identity + self.dropout_layer(self.proj_drop(out))
-
-
-
-@TRANSFORMER_LAYER_SEQUENCE.register_module()
-class PETRTransformerEncoder(TransformerLayerSequence):
-    """TransformerEncoder of DETR.
-    Args:
-        post_norm_cfg (dict): Config of last normalization layer. Default：
-            `LN`. Only used when `self.pre_norm` is `True`
-    """
-
-    def __init__(self, *args, post_norm_cfg=dict(type='LN'), **kwargs):
-        super(PETRTransformerEncoder, self).__init__(*args, **kwargs)
-        if post_norm_cfg is not None:
-            self.post_norm = build_norm_layer(
-                post_norm_cfg, self.embed_dims)[1] if self.pre_norm else None
-        else:
-            assert not self.pre_norm, f'Use prenorm in ' \
-                                      f'{self.__class__.__name__},' \
-                                      f'Please specify post_norm_cfg'
-            self.post_norm = None
-
-    def forward(self, *args, **kwargs):
-        """Forward function for `TransformerCoder`.
-        Returns:
-            Tensor: forwarded results with shape [num_query, bs, embed_dims].
-        """
-        x = super(PETRTransformerEncoder, self).forward(*args, **kwargs)
-        if self.post_norm is not None:
-            x = self.post_norm(x)
-        return x
-
 
 @TRANSFORMER_LAYER_SEQUENCE.register_module()
 class PETRTransformerDecoder(TransformerLayerSequence):
@@ -399,20 +170,7 @@ class PETRTransformerDecoder(TransformerLayerSequence):
 
     def forward(self, bbox_embed, query, *args, reference_points=None, lidar2img=None, extrinsics=None, 
                 orig_spatial_shapes=None, img_metas=None, num_cameras=6, **kwargs):
-        """Forward function for `TransformerDecoder`.
-        Args:
-        NOTE: Q = pad size | cur. queries | propagated
-            bbox_embed (nn.ModuleList): same as StreamPETR's reg branch 
-            query (Tensor): current queries|prev queries; Tensor [B, Q, 256]
-            reference_points (Tensor): current ref pts|prev ref pts Tensor [B, Q, 3]
-            lidar2img (Tensor): current frame's lidar2img [B, N, 4, 4]
-            extrinsics (Tensor): current frame's extrinsics [B, N, 4, 4]
-            spatial_shapes: [n_levels, 2]
-        Returns:
-            Tensor: Results with shape [1, num_query, bs, embed_dims] when
-                return_intermediate is `False`, otherwise it has shape
-                [num_layers, num_query, bs, embed_dims].
-        """
+        
         if not self.return_intermediate:
             x = super().forward(query, *args, reference_points=None, **kwargs)
             if self.post_norm:
@@ -444,21 +202,17 @@ class PETRTransformerDecoder(TransformerLayerSequence):
                                                                         ref_pts_unnormalized, orig_spatial_shapes,
                                                                         img_metas, ret_num_non_matches=True)
                     
-                    # if self.debug and self._iter %50 == 0:
-                    # if self._iter % 50 == 0:
-                    #     num_non_match_prop = num_non_matches.sum(1) / num_non_matches.size(-1)
-                    #     debug_msg =f"3d->2d @ decoder layer {lid}, proportion of non match ref pts: {num_non_match_prop}"
-                    #     print(debug_msg)
-                    #     if self.debug: self.debug_logger.info(debug_msg)
+                    
                     num_second_matches, second_matches_valid_idxs, idx_with_second_match = [None]*3
                 elif self.ref_pts_mode == "multiple":
                     if self._iter < 10: print("DECODER: USING MULTIPLE REF PTS")
                     ref_pts_mult_outs = convert_3d_to_mult_2d_global_cam_ref_pts(cam_transformations,
                                                                     ref_pts_unnormalized, orig_spatial_shapes,
-                                                                    img_metas, ret_num_non_matches=self.debug)
+                                                                    img_metas, 
+                                                                    ret_num_non_matches=with_debug(self))
                     reference_points_2d_cam, num_second_matches, second_matches_valid_idxs, idx_with_second_match = \
                         ref_pts_mult_outs[:4]
-                    if self.debug and self._iter % 50 == 0:
+                    if do_debug_process(self, repeating=True):
                         non_matches = ref_pts_mult_outs[4]
                         num_non_match_prop = non_matches.sum(1) / non_matches.size(-1)
                         num_second_matches_prop = second_matches_valid_idxs[1].size(0) / reference_points_2d_cam.size(1)
@@ -499,7 +253,7 @@ class PETRTransformerDecoder(TransformerLayerSequence):
                     next_ref_pts = coord_pred[..., 0:3].detach().clone()
                     unnormalized_ref_pts = inverse_sigmoid(coord_pred[..., 0:3].detach().clone())
                 else:
-                    if self.debug and self._iter % 50 == 0:
+                    if do_debug_process(self, repeating=True, interval=500):
                         prop_out_of_range = not_in_lidar_range(coord_pred[..., 0:3], self.pc_range).sum().item() / coord_pred.size(1)
                         print(f"coord prediction within decoder layer {lid} out of range: {prop_out_of_range}")
                     coord_pred[..., 0:3] = clamp_to_lidar_range(coord_pred[..., 0:3], self.pc_range)
@@ -528,22 +282,6 @@ class PETRTransformerDecoder(TransformerLayerSequence):
 
 @TRANSFORMER.register_module()
 class PETRTemporalTransformer(BaseModule):
-    """Implements the DETR transformer.
-    Following the official DETR implementation, this module copy-paste
-    from torch.nn.Transformer with modifications:
-        * positional encodings are passed in MultiheadAttention
-        * extra LN at the end of encoder is removed
-        * decoder returns a stack of activations from all decoding layers
-    See `paper: End-to-End Object Detection with Transformers
-    <https://arxiv.org/pdf/2005.12872>`_ for details.
-    Args:
-        encoder (`mmcv.ConfigDict` | Dict): Config of
-            TransformerEncoder. Defaults to None.
-        decoder ((`mmcv.ConfigDict` | Dict)): Config of
-            TransformerDecoder. Defaults to None
-        init_cfg (obj:`mmcv.ConfigDict`): The Config for initialization.
-            Defaults to None.
-    """
 
     def __init__(self, encoder=None, decoder=None, init_cfg=None, two_stage=False):
         super(PETRTemporalTransformer, self).__init__(init_cfg=init_cfg)
@@ -575,27 +313,7 @@ class PETRTemporalTransformer(BaseModule):
                 lidar2img=None, extrinsics=None, orig_spatial_shapes=None,
                 flattened_spatial_shapes=None, flattened_level_start_index=None,
                 img_metas=None, prev_exists=None):
-        """
-        Args:
-            bbox_embed (ModuleList): StreamPETR's reg_branches 
-                (note: need to pass this way because setting the same modules as attributes 
-                in two separate modules causes error in the running code) 
-            memory (_type_): [B, N, h0*w0+..., C] | [B, h0*N*w0+..., C]
-            tgt (_type_): dn queries|current queries|prev queries; Tensor [B, Nq+num_propagated, 256]
-            query_pos (_type_): query pos | prev query pos; Tensor [B, Nq+num_propagated, 256]
-            pos_embed (_type_): 3d pos embeds; Tensor [B, N, h0*w0+..., C] | None if it is integrated in encoder
-            attn_masks (_type_): temporal attention mask; [pad_size + Nq + num_propagated,  pad_size + Nq + memory_len]
-            temp_memory (_type_, optional): rest of memory queue Tensor [B, memory_len - num_propagated, 256]
-            temp_pos (_type_, optional): rest of query pos in queue Tensor [B, memory_len - num_propagated, 256]
-            mask (_type_, optional): _description_. Defaults to None.
-            reg_branch (_type_, optional): _description_. Defaults to None.
-            reference_points (_type_, optional): current ref pts|prev ref pts Tensor [B, Nq+num_propagated, 3]
-            lidar2img (_type_, optional): current frame's lidar2img [B, N, 4, 4]
-            extrinsics (_type_, optional): current frame's lidar2cam [B, N, 4, 4]
-            orig_spatial_shapes (_type_, optional): [n_levels, 2]
-            flattened_spatial_shapes: (H, W*num_cams)
-            flattened_level_start_index: [n_levels]
-        """
+        
         # ! WARNING: NEED TO ENSURE THAT REF_PTS[NUM_PROPAGATED:] are aligned with current frame
         assert self.two_stage
         if tgt is None:
@@ -629,41 +347,7 @@ class PETRTemporalTransformer(BaseModule):
 
 @TRANSFORMER_LAYER.register_module()
 class PETRTemporalDecoderLayer(BaseModule):
-    """Base `TransformerLayer` for vision transformer.
-
-    It can be built from `mmcv.ConfigDict` and support more flexible
-    customization, for example, using any number of `FFN or LN ` and
-    use different kinds of `attention` by specifying a list of `ConfigDict`
-    named `attn_cfgs`. It is worth mentioning that it supports `prenorm`
-    when you specifying `norm` as the first element of `operation_order`.
-    More details about the `prenorm`: `On Layer Normalization in the
-    Transformer Architecture <https://arxiv.org/abs/2002.04745>`_ .
-
-    Args:
-        attn_cfgs (list[`mmcv.ConfigDict`] | obj:`mmcv.ConfigDict` | None )):
-            Configs for `self_attention` or `cross_attention` modules,
-            The order of the configs in the list should be consistent with
-            corresponding attentions in operation_order.
-            If it is a dict, all of the attention modules in operation_order
-            will be built with this config. Default: None.
-        ffn_cfgs (list[`mmcv.ConfigDict`] | obj:`mmcv.ConfigDict` | None )):
-            Configs for FFN, The order of the configs in the list should be
-            consistent with corresponding ffn in operation_order.
-            If it is a dict, all of the attention modules in operation_order
-            will be built with this config.
-        operation_order (tuple[str]): The execution order of operation
-            in transformer. Such as ('self_attn', 'norm', 'ffn', 'norm').
-            Support `prenorm` when you specifying first element as `norm`.
-            Default：None.
-        norm_cfg (dict): Config dict for normalization layer.
-            Default: dict(type='LN').
-        init_cfg (obj:`mmcv.ConfigDict`): The Config for initialization.
-            Default: None.
-        batch_first (bool): Key, Query and Value are shape
-            of (batch, n, embed_dim)
-            or (n, batch, embed_dim). Default to False.
-    """
-
+    
     def __init__(self,
                  attn_cfgs=None,
                  ffn_cfgs=dict(
@@ -786,23 +470,6 @@ class PETRTemporalDecoderLayer(BaseModule):
                 idx_with_second_match=None,
                 prev_exists=None, # Tensor [B]
                 ):
-        """
-        Args:
-        NOTE: Q = padding + current queries + propagated
-            query (_type_): current queries|prev queries; Tensor [B, Q, 256]
-            key (_type_, optional):[B, N, h0*w0+..., C]
-            value (_type_, optional): [B, N, h0*w0+..., C]
-            query_pos (_type_, optional): query pos | prev query pos; Tensor [B, Q, 256]
-            key_pos (_type_, optional): 3d pos embeds; Tensor [B, N, h0*w0+..., C]
-            temp_memory (_type_, optional): rest of memory queue Tensor [B, memory_len - num_propagated, 256]
-            temp_pos (_type_, optional): rest of query pos in queue Tensor [B, memory_len - num_propagated, 256]
-            attn_masks (_type_, optional): _description_. Defaults to None.
-            query_key_padding_mask (_type_, optional): _description_. Defaults to None.
-            key_padding_mask (_type_, optional): _description_. Defaults to None.
-            reference_points (_type_, optional): projected cam reference points. Tensor [B, Q, n_levels, 2]
-            spatial_shapes (_type_, optional): [n_levels, 2]
-            num_cameras (int, optional): _description_. Defaults to 6.
-        """
         norm_index = 0
         attn_index = 0
         ffn_index = 0

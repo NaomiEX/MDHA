@@ -136,7 +136,7 @@ class CustomNuScenesDataset(NuScenesDataset):
             else:
                 queue[-1][key] = DC([each[key].data for each in queue], cpu_only=True)
         if not self.test_mode:
-            for key in ['gt_bboxes_3d', 'gt_labels_3d', 'gt_bboxes', 'gt_labels', 'centers2d', 'depths']:
+            for key in ['gt_bboxes_3d', 'gt_labels_3d']:
                 if key == 'gt_bboxes_3d':
                     queue[-1][key] = DC([each[key].data for each in queue], cpu_only=True)
                 else:
@@ -232,14 +232,14 @@ class CustomNuScenesDataset(NuScenesDataset):
                 ))
         if not self.test_mode:
             annos = self.get_ann_info(index)
-            annos.update( 
-                dict(
-                    bboxes=info['bboxes2d'],
-                    labels=info['labels2d'],
-                    centers2d=info['centers2d'],
-                    depths=info['depths'],
-                    bboxes_ignore=info['bboxes_ignore'])
-            )
+            # annos.update( 
+            #     dict(
+            #         bboxes=info['bboxes2d'],
+            #         labels=info['labels2d'],
+            #         centers2d=info['centers2d'],
+            #         depths=info['depths'],
+            #         bboxes_ignore=info['bboxes_ignore'])
+            # )
             input_dict['ann_info'] = annos
             
         return input_dict

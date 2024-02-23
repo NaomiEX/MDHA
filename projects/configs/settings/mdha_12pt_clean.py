@@ -335,11 +335,11 @@ ida_aug_conf = {
 # TODO: CURRENTLY I BELIEVE THAT ObjectRangeFilter just filters out the objects out of lidar range not cam range
 train_pipeline = [
     dict(type='LoadMultiViewImageFromFiles', to_float32=True),
-    dict(type='LoadAnnotations3D', with_bbox_3d=True, with_label_3d=True, with_bbox=True,
-        with_label=True, with_bbox_depth=True),
+    dict(type='LoadAnnotations3D', with_bbox_3d=True, with_label_3d=True, with_bbox=False,
+        with_label=False, with_bbox_depth=False),
     dict(type='ObjectRangeFilter', point_cloud_range=point_cloud_range),
     dict(type='ObjectNameFilter', classes=class_names),
-    dict(type='ResizeCropFlipRotImage', data_aug_conf = ida_aug_conf, training=True),
+    dict(type='ResizeCropFlipRotImage', data_aug_conf = ida_aug_conf, with_2d=False, training=True),
     dict(type='GlobalRotScaleTransImage',
             rot_range=[-0.3925, 0.3925],
             translation_std=[0, 0, 0],
@@ -351,11 +351,11 @@ train_pipeline = [
     dict(type='PadMultiViewImage', size_divisor=32),
     dict(type='PETRFormatBundle3D', class_names=class_names, collect_keys=collect_keys + ['prev_exists']),
     dict(type='Collect3D', keys=['gt_bboxes_3d', 'gt_labels_3d', 'img', 'prev_exists'] + collect_keys,
-             meta_keys=('pad_shape'))
+             meta_keys=['pad_shape'])
 ]
 test_pipeline = [
     dict(type='LoadMultiViewImageFromFiles', to_float32=True),
-    dict(type='ResizeCropFlipRotImage', data_aug_conf = ida_aug_conf, training=False),
+    dict(type='ResizeCropFlipRotImage', data_aug_conf = ida_aug_conf, with_2d=False, training=False),
     dict(type='NormalizeMultiviewImage', **img_norm_cfg),
     dict(type='PadMultiViewImage', size_divisor=32),
     dict(
@@ -370,7 +370,7 @@ test_pipeline = [
                 class_names=class_names,
                 with_label=False),
             dict(type='Collect3D', keys=['img'] + collect_keys,
-            meta_keys=('pad_shape'))
+            meta_keys=['pad_shape'])
         ])
 ]
 

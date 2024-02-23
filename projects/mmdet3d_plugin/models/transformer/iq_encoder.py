@@ -5,7 +5,6 @@ import copy
 import numpy as np
 from torch import nn
 import torch.nn.functional as F
-from mmcv.runner import BaseModule
 from mmcv.cnn import Linear, xavier_init, build_norm_layer
 from mmcv.cnn.bricks.transformer import (TransformerLayerSequence, BaseTransformerLayer, 
                                          TRANSFORMER_LAYER_SEQUENCE, TRANSFORMER_LAYER)
@@ -19,12 +18,11 @@ from projects.mmdet3d_plugin.models.utils.misc import MLN, SELayer_Linear
 from projects.mmdet3d_plugin.core.bbox.util import normalize_bbox, clamp_to_rot_range
 from projects.mmdet3d_plugin.attentions.custom_deform_attn import CustomDeformAttn
 from ..utils.projections import convert_3d_to_2d_global_cam_ref_pts, Projections, project_to_matching_2point5d_cam_points
-from ..utils.reference_points import ReferencePoints
 from ..utils.mask_predictor import MaskPredictor
 from ..utils.lidar_utils import normalize_lidar, denormalize_lidar, clamp_to_lidar_range, not_in_lidar_range
 from ..utils.misc import flatten_mlvl, groupby_agg_mean
+from ..utils.debug import *
 from ..detectors.depthnet import DepthNet
-from mmdet.utils import get_root_logger 
 
 @TRANSFORMER_LAYER_SEQUENCE.register_module()
 class IQTransformerEncoder(TransformerLayerSequence):
@@ -279,17 +277,6 @@ class IQTransformerEncoder(TransformerLayerSequence):
             # ref_pts_2p5d_norm: 2.5d img ref points unnormalized Tensor[B, h0*N*w0+..., 3]
             ref_pts_2d_norm, ref_pts_2p5d_unnorm = self.reference_points.get_enc_out_proposals_and_ref_pts(
                     query.size(0), orig_spatial_shapes, query.device, center_depth_group=True)
-
-            if self.debug and self.debug_collect_stats and self._iter % 50 == 0:
-                # ref_pts_2d_norm, ref_pts_2p5d_unnorm, debug_msg = \
-                #         self.reference_points.get_enc_out_proposals_and_ref_pts(query.size(0), orig_spatial_shapes, 
-                #                                 query.device, center_depth_group=True, debug=True)
-           
-                debug_dir = os.path.dirname(self.debug_log_filename)
-                with open(f"{debug_dir}/ref_pts_2d_norm_iter{self._iter}.pkl", "wb") as f1:
-                    pickle.dump(ref_pts_2d_norm, f1)
-                with open(f"{debug_dir}/ref_pts_2p5d_unnorm_iter{self._iter}.pkl", "wb") as f2:
-                    pickle.dump(ref_pts_2p5d_unnorm, f2)
                 
             assert torch.logical_and(ref_pts_2d_norm >= 0.0, ref_pts_2d_norm <= 1.0).all()
             reference_points = [ref_pts_2d_norm, ref_pts_2p5d_unnorm]
@@ -428,8 +415,7 @@ class IQTransformerEncoder(TransformerLayerSequence):
             
             # [B, h0*N*w0+..., 3]
             output_proposals = Projections.project_2p5d_cam_to_3d_lidar(ref_pts_2p5d_unnorm, img2lidar, 
-                                                     collect_stats=self.debug and self.debug_collect_stats and self._iter % 200 == 0, 
-                                                     logger=self.debug_logger if self.debug else None, pc_range=self.pc_range)
+                                                     pc_range=self.pc_range)
   
             # output_proposals = torch.gather(all_output_proposals, 1, 
             #                                 top_rho_inds.unsqueeze(-1).repeat(1, 1, all_output_proposals.size(-1)))
@@ -552,26 +538,6 @@ class IQTransformerEncoder(TransformerLayerSequence):
             out_coord_final=out_coord
         else:
             out_coord_final = clamp_to_lidar_range(out_coord.clone(), self.pc_range)
-        if self.debug and self._iter % 20 == 0:
-            invalid_rots = torch.logical_or(out_coord[..., 6:8] > 1.0, out_coord[..., 6:8] < -1.0)
-            prop_invalid_rots = invalid_rots.sum() / invalid_rots.numel()
-            print(f"ENCODER: prop invalid rotations: {prop_invalid_rots}")
-
-        ## wlh postprocessing
-        if self._iter % 50 == 0:
-            invalid_wlh = out_coord_final[..., 3:6] < 0.0
-            prop_invalid_wlh = invalid_wlh.sum() / invalid_wlh.numel()
-            # print(f"Encoder: wlh out of range: {prop_invalid_wlh}")
-        if self.rot_post_process == "clamp":
-            out_coord_final[..., 6:8] = clamp_to_rot_range(out_coord_final)
-        if self.wlhclamp == "abs":
-            # if self._iter < 10: print("Encoder: using abs wlh clamp")
-            out_coord_final[..., 3:6] = out_coord_final[..., 3:6].clone().abs()
-            if self._iter % 50 == 0:
-                invalid_wlh = out_coord_final[..., 3:6] < 0.0
-                prop_invalid_wlh = invalid_wlh.sum() / invalid_wlh.numel()
-                # print(f"Encoder: (after clamping) wlh out of range: {prop_invalid_wlh}")
-
         
 
         enc_pred_dict = {

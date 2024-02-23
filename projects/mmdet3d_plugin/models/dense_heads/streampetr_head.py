@@ -1,14 +1,3 @@
-# ------------------------------------------------------------------------
-# Copyright (c) 2022 megvii-model. All Rights Reserved.
-# ------------------------------------------------------------------------
-# Modified from DETR3D (https://github.com/WangYueFt/detr3d)
-# Copyright (c) 2021 Wang, Yue
-# ------------------------------------------------------------------------
-# Modified from mmdetection3d (https://github.com/open-mmlab/mmdetection3d)
-# Copyright (c) OpenMMLab. All rights reserved.
-# ------------------------------------------------------------------------
-#  Modified by Shihao Wang
-# ------------------------------------------------------------------------
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -240,8 +229,7 @@ class StreamPETRHead(AnchorFreeHead):
         # TODO: TRY TO INITIALIZE IT AS THE TOP K MOST COMMON OBJECT (X,Y,Z)
         # The initialization for transformer is important
         if hasattr(self, "pseudo_reference_points"):
-            if not self.init_pseudo_ref_pts:
-                nn.init.uniform_(self.pseudo_reference_points.weight.data, 0, 1)
+            nn.init.uniform_(self.pseudo_reference_points.weight.data, 0, 1)
             self.pseudo_reference_points.weight.requires_grad = False
 
         self.transformer.init_weights()
@@ -291,16 +279,13 @@ class StreamPETRHead(AnchorFreeHead):
             # [B, pad_size+Q+propagated, 1]
             rec_score = all_cls_scores[:, :, mask_dict['pad_size']:, :][-1].sigmoid().topk(1, dim=-1).values[..., 0:1]
             rec_timestamp = torch.zeros_like(rec_score, dtype=torch.float64)
-            if self.refine_all: 
-                rec_wlhrot = all_bbox_preds[:, :, mask_dict['pad_size']:, 3:-2][-1]
+            
         else:
             rec_reference_points = all_bbox_preds[..., :3][-1]
             rec_velo = all_bbox_preds[..., -2:][-1]
             rec_memory = outs_dec[-1]
             rec_score = all_cls_scores[-1].sigmoid().topk(1, dim=-1).values[..., 0:1]
             rec_timestamp = torch.zeros_like(rec_score, dtype=torch.float64)
-            if self.refine_all:
-                rec_wlhrot = all_bbox_preds[..., 3:-2][-1]
         
         # topk proposals
         _, topk_indexes = torch.topk(rec_score, self.num_propagated, dim=1)
@@ -571,8 +556,6 @@ class StreamPETRHead(AnchorFreeHead):
                 
             else:
                 out_coord[..., 0:3] += out_ref_pts[lvl-1][..., 0:3]
-                if self.refine_all:
-                    out_coord[..., 3:] += outputs_coords[-1][..., 3:]
             
 
             outputs_classes.append(outputs_class)

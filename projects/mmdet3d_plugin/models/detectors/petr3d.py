@@ -1,27 +1,12 @@
-# ------------------------------------------------------------------------
-# Copyright (c) 2022 megvii-model. All Rights Reserved.
-# ------------------------------------------------------------------------
-# Modified from DETR3D (https://github.com/WangYueFt/detr3d)
-# Copyright (c) 2021 Wang, Yue
-# ------------------------------------------------------------------------
-# Modified from mmdetection3d (https://github.com/open-mmlab/mmdetection3d)
-# Copyright (c) OpenMMLab. All rights reserved.
-# ------------------------------------------------------------------------
-#  Modified by Shihao Wang
-# ------------------------------------------------------------------------
+import time
 import torch
-import os
-import copy
 from torch import nn
 from torch.nn.init import xavier_uniform_, constant_
 
 from mmcv.runner import force_fp32, auto_fp16, get_dist_info
-from mmcv.cnn import Linear
 from mmcv.cnn.bricks.transformer import build_transformer_layer_sequence
 from mmcv.cnn.bricks.plugin import build_plugin_layer
-from mmdet.models.utils import NormedLinear
 from mmdet.models import DETECTORS
-from mmdet3d.models.builder import build_head
 from mmdet3d.core import bbox3d2result
 from mmdet3d.models.detectors.mvx_two_stage import MVXTwoStageDetector
 from projects.mmdet3d_plugin.models.utils.grid_mask import GridMask
@@ -30,7 +15,6 @@ from projects.mmdet3d_plugin.models.utils.positional_encoding import posemb2d_fr
 from projects.mmdet3d_plugin.constants import *
 from ..utils.lidar_utils import normalize_lidar
 from ..utils.debug import *
-from mmdet.models.utils.transformer import inverse_sigmoid
 
 @DETECTORS.register_module()
 class Petr3D(MVXTwoStageDetector):
@@ -40,7 +24,6 @@ class Petr3D(MVXTwoStageDetector):
                  use_grid_mask=False,
                  img_backbone=None,
                  img_neck=None,
-                 pts_neck=None,
                  pts_bbox_head=None,
                  train_cfg=None,
                  test_cfg=None,
@@ -75,8 +58,9 @@ class Petr3D(MVXTwoStageDetector):
         if pts_bbox_head is not None:
             pts_bbox_head['pc_range'] = pc_range
 
-        super(Petr3D, self).__init__(img_backbone, img_neck, pts_neck, pts_bbox_head, 
-                                     train_cfg, test_cfg, pretrained)
+        super(Petr3D, self).__init__(img_backbone=img_backbone, img_neck=img_neck, 
+                                     pts_bbox_head=pts_bbox_head, train_cfg=train_cfg, 
+                                     test_cfg=test_cfg, pretrained=pretrained)
 
         self.use_grid_mask = use_grid_mask
         if self.use_grid_mask:
@@ -206,11 +190,7 @@ class Petr3D(MVXTwoStageDetector):
     def obtain_history_memory(self,
                             gt_bboxes_3d=None,
                             gt_labels_3d=None,
-                            gt_bboxes=None,
-                            gt_labels=None,
                             img_metas=None,
-                            centers2d=None,
-                            depths=None,
                             **data):
         i=0
         data_t = dict()
@@ -219,9 +199,8 @@ class Petr3D(MVXTwoStageDetector):
             data_t[key] = data[key][:, i] 
 
         data_t['img_feats'] = [d[:, i] for d in data['img_feats']]
-        loss = self.forward_pts_train(gt_bboxes_3d[i], gt_labels_3d[i], gt_bboxes[i],
-                                      gt_labels[i], img_metas[i], centers2d[i], depths[i], 
-                                      requires_grad=True, return_losses=True, **data_t)
+        loss = self.forward_pts_train(gt_bboxes_3d[i], gt_labels_3d[i], img_metas[i], 
+                                      return_losses=True, **data_t)
         return loss
 
 
@@ -308,7 +287,6 @@ class Petr3D(MVXTwoStageDetector):
                 B, num_cams, embed_dims, H_i, W_i = lvl_feat.shape
                 lvl_feat = lvl_feat.permute(0, 3, 1, 4, 2) # [B, N, C, H_i, W_i] -> [B, H_i, N, W_i, C]
                 if self.use_xy_embed:
-                    # if self.iter_num == 0: print("use xy embed")
                     # [B, H_i, N*W_i, C]
                     pos = posemb2d_from_spatial_shapes((H_i, W_i*num_cams), lvl_feat.device, B, normalize=True)
                     pos = pos.flatten(1, 2) # [B, H_i*N*W_i, C]
@@ -416,15 +394,20 @@ class Petr3D(MVXTwoStageDetector):
 
     @force_fp32(apply_to=('img'))
     def forward(self, return_loss=True, **data):
+        # with open("./experiments/data_forward_clean.pkl", "wb") as f:
+        #     pickle.dump(data, f)
+        # time.sleep(5)
+        # raise Exception()
         if return_loss:
-            for key in ['gt_bboxes_3d', 'gt_labels_3d', 'gt_bboxes', 'gt_labels', 'centers2d', 'depths', 'img_metas']:
+            for key in ['gt_bboxes_3d', 'gt_labels_3d', 'img_metas']:
                 data[key] = list(zip(*data[key]))
-            if self.iter_num % 50 == 0:
-                rank, world_size=get_dist_info()
+            rank, _=get_dist_info()
+            
+            if do_debug_process(self, repeating=True):
                 print(f"GPU {rank} memory allocated: {torch.cuda.memory_allocated(rank)/1e9} GB")
                 print(f"GPU {rank} memory reserved: {torch.cuda.memory_reserved(rank)/1e9} GB")
                 print(f"GPU {rank} max memory reserved: {torch.cuda.max_memory_reserved(rank)/1e9} GB")
-            self.iter_num += 1
+            self.debug.iter += 1
             out= self.forward_train(**data)
         else:
             out= self.forward_test(**data)
@@ -435,13 +418,8 @@ class Petr3D(MVXTwoStageDetector):
                       img_metas=None,
                       gt_bboxes_3d=None,
                       gt_labels_3d=None,
-                      gt_labels=None,
-                      gt_bboxes=None,
-                      gt_bboxes_ignore=None,
-                      depths=None,
-                      centers2d=None,
                       **data):
-        if self.iter_num < 10:
+        if do_debug_process(self):
             print(f"img shape: {data['img'].shape}")
         if self.test_flag: #for interval evaluation
             self.pts_bbox_head.reset_memory()
@@ -457,8 +435,7 @@ class Petr3D(MVXTwoStageDetector):
         data['img_feats'] = rec_img_feats
 
         losses = self.obtain_history_memory(gt_bboxes_3d,
-                        gt_labels_3d, gt_bboxes,
-                        gt_labels, img_metas, centers2d, depths, gt_bboxes_ignore, **data)
+                        gt_labels_3d, img_metas, **data)
         return losses
   
   
