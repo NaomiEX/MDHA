@@ -1,6 +1,3 @@
-_base_ = [
-    "../../default.py"
-]
 backbone_norm_cfg = dict(type='LN', requires_grad=True)
 plugin=True
 plugin_dir='projects/mmdet3d_plugin/'
