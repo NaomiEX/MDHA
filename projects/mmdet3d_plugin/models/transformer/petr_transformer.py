@@ -148,7 +148,6 @@ class PETRTransformerDecoder(TransformerLayerSequence):
                  use_sigmoid_on_attn_out=False,
                  **kwargs):
         super(PETRTransformerDecoder, self).__init__(*args, **kwargs)
-        self._iter = 0
         self.pc_range = nn.Parameter(torch.tensor(
             pc_range), requires_grad=False)
         self.return_intermediate = return_intermediate
@@ -194,7 +193,7 @@ class PETRTransformerDecoder(TransformerLayerSequence):
                     
                     num_second_matches, second_matches_valid_idxs, idx_with_second_match = [None]*3
                 elif self.ref_pts_mode == "multiple":
-                    if self._iter < 10: print("DECODER: USING MULTIPLE REF PTS")
+                    if do_debug_process(self): print("DECODER: USING MULTIPLE REF PTS")
                     ref_pts_mult_outs = convert_3d_to_mult_2d_global_cam_ref_pts(cam_transformations,
                                                                     ref_pts_unnormalized, orig_spatial_shapes,
                                                                     img_metas, 
@@ -225,7 +224,7 @@ class PETRTransformerDecoder(TransformerLayerSequence):
                 assert ref_pts_unnormalized is not None, "box refinement needs reference points!"
                 coord_offset = bbox_embed[lid](query_out) # [B, Q, 10]
                 if self.use_sigmoid_on_attn_out:
-                    if self._iter == 0: print("PETR_TRANSFORMER: using sigmoid on attn out")
+                    if do_debug_process(self): print("PETR_TRANSFORMER: using sigmoid on attn out")
                     coord_offset[..., :3] = F.sigmoid(coord_offset[..., :3])
                     coord_offset[..., :3] = denormalize_lidar(coord_offset[..., :3], self.pc_range)
                 coord_pred = coord_offset
@@ -251,7 +250,6 @@ class PETRTransformerDecoder(TransformerLayerSequence):
                     intermediate.append(query)
             reference_points = next_ref_pts
 
-        self._iter += 1
         return torch.stack(intermediate), torch.stack(intermediate_reference_points), init_reference_point
 
 

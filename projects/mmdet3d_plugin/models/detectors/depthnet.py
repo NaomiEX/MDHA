@@ -17,7 +17,6 @@ class DepthNet(BaseModule):
                  depth_weight_bound=False, depth_weight_limit=0.01, 
                  **kwargs):
         super().__init__()
-        self._iter = 0
         self.in_channels=in_channels
         self.depth_pred_position=depth_pred_position
         self.mlvl_feats_format=mlvl_feats_format
@@ -181,7 +180,6 @@ class DepthNet(BaseModule):
                 w = torch.exp(-x/lam)
                 if self.depth_weight_bound:
                     mask=w < self.depth_weight_limit
-                    # if self._iter % 50 == 0: print(f"proportion masked @ level {lvl}: {mask.sum()/mask.numel()}")
                     w = w.masked_fill(mask, 0.0)
                 return w
             n_levels=orig_spatial_shapes.size(0)
@@ -323,5 +321,4 @@ class DepthNet(BaseModule):
                                       orig_spatial_shapes=orig_spatial_shapes,
                                       ref_pts_2point5d_pred=ref_pts_2point5d_pred)
         loss_dict['loss_depth'] = loss_depth
-        self._iter += 1
         return loss_dict

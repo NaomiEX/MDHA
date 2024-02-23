@@ -11,7 +11,6 @@ from mmdet.models import build_loss
 class MaskPredictor(BaseModule):
     def __init__(self, in_dim, hidden_dim, loss_type="multilabel_soft_margin_loss",
                  sigmoid_on_output=False, loss_cfg=None, loss_weight=1.0):
-        self._iter = 0
         super().__init__()
         # self.cams_as_global=cams_as_global
         self.hidden_dim = hidden_dim
@@ -96,7 +95,5 @@ class MaskPredictor(BaseModule):
             raise Exception(f"loss type: {self.loss_type} is not supported")
         mask_pred_loss=torch.nan_to_num(mask_pred_loss, nan=1e-16, posinf=100.0, neginf=-100.0)
         mask_loss_dict= dict(mask_loss=mask_pred_loss * self.loss_weight)
-        if self._iter < 10:
-            print("USING NAN TO NUM IN MASK PRED")
-        self._iter += 1
+        
         return mask_loss_dict
