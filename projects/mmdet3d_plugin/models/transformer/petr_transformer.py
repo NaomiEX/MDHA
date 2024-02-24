@@ -159,7 +159,7 @@ class PETRTemporalTransformer(BaseModule):
         self._is_init = True
 
 
-    def forward(self, bbox_embed, memory, tgt, query_pos, attn_masks, pos_embed=None,
+    def forward(self, anchor_refinements, memory, tgt, query_pos, attn_masks, pos_embed=None,
                 temp_memory=None, temp_pos=None, mask=None, reference_points=None, 
                 lidar2img=None, extrinsics=None, orig_spatial_shapes=None,
                 flattened_spatial_shapes=None, flattened_level_start_index=None,
@@ -171,7 +171,7 @@ class PETRTemporalTransformer(BaseModule):
         # out_ref_pts: [num_layers, B, Q, 3]
         # init_ref_pts: [B, Q, 3]
         outs_decoder = self.decoder(
-            bbox_embed=bbox_embed,
+            anchor_refinements=anchor_refinements,
             query=tgt,
             key=memory if not self.two_stage else None,
             value=memory,
@@ -212,7 +212,7 @@ class PETRTransformerDecoder(TransformerLayerSequence):
                  num_classes=10,
                  anchor_dims=10,
                  num_reg_fcs=2,
-                 limit_3d_pts_to_pc_range=True,
+                 limit_3d_pts_to_pc_range=False,
                  **kwargs):
         super(PETRTransformerDecoder, self).__init__(*args, **kwargs)
         self.limit_3d_pts_to_pc_range=limit_3d_pts_to_pc_range
@@ -346,8 +346,6 @@ class PETRTransformerDecoder(TransformerLayerSequence):
                 intermediate.append(self.post_norm(query))
             else:
                 intermediate.append(query)
-
-            
 
         return torch.stack(intermediate), torch.stack(intermediate_reference_points), init_reference_point
 

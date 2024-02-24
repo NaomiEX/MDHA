@@ -60,7 +60,7 @@ class StreamPETRHead(AnchorFreeHead):
                  use_sigmoid_on_attn_out=False,
                  train_cfg=None,
                  test_cfg=dict(max_per_img=100),
-                 limit_3d_pts_to_pc_range=True,
+                 limit_3d_pts_to_pc_range=False,
                  **kwargs):
         # NOTE here use `AnchorFreeHead` instead of `TransformerHead`,
         # since it brings inconvenience when the initialization of
@@ -167,8 +167,9 @@ class StreamPETRHead(AnchorFreeHead):
         self.reset_memory()
 
         # self.anchor_refinement=build_plugin_layer(anchor_refinement)[1]
-        self.anchor_refinements = [build_plugin_layer(anchor_refinement)[1] 
-                                   for _ in range(self.num_decoder_layers)]
+        self.anchor_refinements = nn.ModuleList(
+            [build_plugin_layer(anchor_refinement)[1] 
+             for _ in range(self.num_decoder_layers)])
 
         # cls_branch = []
         # for _ in range(self.num_reg_fcs):
@@ -523,12 +524,12 @@ class StreamPETRHead(AnchorFreeHead):
         # init_ref_pts: initial ref pts (in [0,1] range) [B, Q, 3]
         # NOTE: expecting all ref_pts to already be unnormalized
         outs_dec, out_ref_pts, init_ref_pts = self.transformer(
-            self.anchor_refinements, 
-            memory, tgt, query_pos, attn_mask, temp_memory=temp_memory, temp_pos=temp_pos, 
-            reference_points = reference_points.clone(), lidar2img=data['lidar2img'], 
+            self.anchor_refinements, memory, tgt, query_pos, attn_mask, temp_memory=temp_memory, 
+            temp_pos=temp_pos, reference_points = reference_points.clone(), lidar2img=data['lidar2img'], 
             extrinsics=data['extrinsics'], orig_spatial_shapes=orig_spatial_shapes, 
             flattened_spatial_shapes=flattened_spatial_shapes, 
             flattened_level_start_index=flattened_level_start_index, img_metas=img_metas)
+        
         
         outs_dec = torch.nan_to_num(outs_dec)
         outputs_classes = []

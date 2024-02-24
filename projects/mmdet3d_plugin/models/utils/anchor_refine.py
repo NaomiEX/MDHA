@@ -2,11 +2,13 @@ import torch
 from torch import nn
 from copy import deepcopy
 
-from mmcv.runner import BaseModule, Linear, bias_init_with_prob
+from mmcv.runner import BaseModule
+from mmcv.cnn import Linear, bias_init_with_prob
 from mmcv.cnn.bricks.registry import PLUGIN_LAYERS
 
 from .lidar_utils import clamp_to_lidar_range
 from ...constants import *
+from .debug import *
 
 @PLUGIN_LAYERS.register_module()
 class AnchorRefinement(BaseModule):
@@ -55,6 +57,7 @@ class AnchorRefinement(BaseModule):
                 time_interval=None,
                 return_cls=True,
                 ):
+        if do_debug_process(self): print(f"ANCHOR REFINE STATE: {self.refine_state}")
         # TODO: use query + query_pos
         feature = query
 

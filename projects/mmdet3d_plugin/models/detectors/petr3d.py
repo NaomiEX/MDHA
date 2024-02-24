@@ -38,7 +38,7 @@ class Petr3D(MVXTwoStageDetector):
                  encoder=None,
                  num_cameras=6,
                  pc_range=None,
-                 limit_3d_pts_to_pc_range=True,
+                 limit_3d_pts_to_pc_range=False,
                  ## depth
                  depth_net=None,
                  depth_pred_position=0,

@@ -262,7 +262,7 @@ pts_bbox_head=dict(
                         ],
                     feedforward_channels=2048, # TODO: TRY WITH JUST 1024
                     ffn_dropout=0.1,
-                    with_cp=True,  ###use checkpoint to save memory
+                    with_cp=False,  ###use checkpoint to save memory
                     operation_order=('self_attn', 'norm', 'cross_attn', 'norm',
                                      'ffn', 'norm'),
                     batch_first=True,
@@ -299,7 +299,7 @@ model = dict(
         frozen_stages=-1,
         norm_eval=False,
         style="pytorch",
-        with_cp=True,
+        with_cp=False,
         out_indices=(0, 1, 2, 3),
         norm_cfg=dict(type="BN", requires_grad=True),
         pretrained="ckpt/resnet50-19c8e357.pth",

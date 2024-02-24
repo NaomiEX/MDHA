@@ -38,7 +38,7 @@ class IQTransformerEncoder(TransformerLayerSequence):
                  use_inv_sigmoid=False, 
                  use_sigmoid_on_attn_out=False, 
                  num_classes=10, 
-                 limit_3d_pts_to_pc_range=True,
+                 limit_3d_pts_to_pc_range=False,
                  anchor_refinement=None,
                  ## sparsification
                  mask_predictor=None,
