@@ -6,12 +6,6 @@ batch_size=4
 num_iters_per_epoch = 28130 // (num_gpus * batch_size)
 num_epochs = 100
 
-cfg_name = "mdha_2gpu16bs"
-debug_args = dict(
-    debug=False,
-    log_file=f"./experiments/debug/{cfg_name}_log.log",
-    collect_stats=False, # expensive collect stats
-)
 
 BS_LR_MAP = {
     16: 4e-4,
