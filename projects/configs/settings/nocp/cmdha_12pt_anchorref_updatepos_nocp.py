@@ -14,7 +14,8 @@ class_names = [
     'motorcycle', 'bicycle', 'pedestrian', 'traffic_cone'
 ]
 
-attn_num_points=12
+enc_attn_num_points=4
+dec_attn_num_points=24
 embed_dims=256
 strides=[4, 8, 16, 32]
 num_levels=len(strides)
@@ -172,7 +173,7 @@ encoder = dict(
                 num_heads=8,
                 proj_drop=0.1,
                 n_levels=num_levels,
-                n_points=attn_num_points, # num_points * num_cams
+                n_points=enc_attn_num_points, # num_points * num_cams
                 with_wrap_around=global_deform_attn_wrap_around,
                 key_weight_modulation=False,
                 div_sampling_offset_x=False,
@@ -253,7 +254,7 @@ pts_bbox_head=dict(
                             num_heads=8,
                             proj_drop=0.1,
                             n_levels=num_levels,
-                            n_points=attn_num_points, # num_points * num_cams
+                            n_points=dec_attn_num_points, # num_points * num_cams
                             with_wrap_around=global_deform_attn_wrap_around,
                             key_weight_modulation=False,
                             div_sampling_offset_x=False,
