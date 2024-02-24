@@ -195,7 +195,7 @@ class IQTransformerEncoder(TransformerLayerSequence):
             raise NotImplementedError("right now only using 1 encoder layer")
     
     def init_weights(self):
-        to_skip=['cls_branch', 'qt', 'attention']
+        to_skip=['attention']
         for name, p in self.named_parameters():
             if any([n in name for n in to_skip]):
                 continue
@@ -204,6 +204,8 @@ class IQTransformerEncoder(TransformerLayerSequence):
 
         for m in self.modules():
             if m == self: continue
+            if isinstance(m, AnchorRefinement):
+                continue
             if isinstance(m, CustomDeformAttn):
                 # assert m.is_init == False
                 m.reset_parameters()
