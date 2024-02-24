@@ -169,6 +169,7 @@ class IQTransformerEncoder(TransformerLayerSequence):
         if self.encode_3dpos_method == "mln":
             self.pos3d_encoding = MLN(self.embed_dims)
 
+        self.anchor_refinement = build_plugin_layer(anchor_refinement)[1]
         ## pred branches
         # cls_branch = []
         # for _ in range(2):
@@ -193,15 +194,20 @@ class IQTransformerEncoder(TransformerLayerSequence):
             raise NotImplementedError("right now only using 1 encoder layer")
     
     def init_weights(self):
+        to_skip=['cls_branch', 'reg_branch', 'qt', 'attention']
+        for name, p in self.named_parameters():
+            if any([n in name for n in to_skip]):
+                continue
+            if p is not None and p.dim() > 1 and p.requires_grad:
+                nn.init.xavier_uniform_(p)
+
         for m in self.modules():
+            if m == self: continue
             if isinstance(m, CustomDeformAttn):
-                assert m.is_init == False
+                # assert m.is_init == False
                 m.reset_parameters()
-            elif isinstance(m, (MaskPredictor, DepthNet)):
+            elif hasattr(m, "init_weights"):
                 m.init_weights()
-            if hasattr(m, 'weight') and m.weight is not None and \
-                m.weight.requires_grad and m.weight.dim() > 1:
-                xavier_init(m, distribution='uniform')
         
         self._is_init = True
 
@@ -357,38 +363,39 @@ class IQTransformerEncoder(TransformerLayerSequence):
             output = src.scatter(1, top_rho_inds.unsqueeze(-1).repeat(1,1, src.size(-1)), query_out)
         
         ## prediction
-        level=0
-        out_cls=self.cls_branches[level](query_out) # [B, p, num_classes]
-        out_coord_offset = self.reg_branches[level](query_out) # [B, p, num_classes]
-        if self.use_sigmoid_on_attn_out:
-            raise NotImplementedError()
-            if do_debug_process(self): print("ENCODER: using sigmoid on attention out")
-            out_coord_offset[..., :3] = F.sigmoid(out_coord_offset[..., :3])
-            out_coord_offset[..., :3] = denormalize_lidar(out_coord_offset[..., :3], self.pc_range)
-        out_coord = out_coord_offset
-        if self.use_inv_sigmoid:
-            if do_debug_process(self): print("using inverse sigmoid")
-            output_proposals = inverse_sigmoid(output_proposals)
-        else:
-            if do_debug_process(self): print("NOT using inverse sigmoid")
-            if self.limit_3d_pts_to_pc_range:
-                output_proposals = denormalize_lidar(output_proposals, self.pc_range)
-                assert not_in_lidar_range(output_proposals, self.pc_range).sum() == 0
+        # level=0
+        out_coord, out_cls = self.anchor_refinement(query_out, output_proposals, pos, 
+                                                    time_interval=None, return_cls=True)
+        # out_cls=self.cls_branches[level](query_out) # [B, p, num_classes]
+        # out_coord_offset = self.reg_branches[level](query_out) # [B, p, num_classes]
+        # if self.use_sigmoid_on_attn_out:
+        #     raise NotImplementedError()
+        #     if do_debug_process(self): print("ENCODER: using sigmoid on attention out")
+        #     out_coord_offset[..., :3] = F.sigmoid(out_coord_offset[..., :3])
+        #     out_coord_offset[..., :3] = denormalize_lidar(out_coord_offset[..., :3], self.pc_range)
+        # out_coord = out_coord_offset
+        # if self.use_inv_sigmoid:
+        #     if do_debug_process(self): print("using inverse sigmoid")
+        #     output_proposals = inverse_sigmoid(output_proposals)
+        # else:
+        #     if do_debug_process(self): print("NOT using inverse sigmoid")
+        #     if self.limit_3d_pts_to_pc_range:
+        #         output_proposals = denormalize_lidar(output_proposals, self.pc_range)
+        #         assert not_in_lidar_range(output_proposals, self.pc_range).sum() == 0
             
-        if level == 0:
-            assert out_coord[..., :3].shape == output_proposals.shape
-            out_coord[..., :3] += output_proposals[..., :3]
-        else:
-            raise NotImplementedError()
+        # if level == 0:
+        #     assert out_coord[..., :3].shape == output_proposals.shape
+        #     out_coord[..., :3] += output_proposals[..., :3]
+        # else:
+        #     raise NotImplementedError()
         
-        if self.use_inv_sigmoid:
-            out_coord[..., :3]=out_coord[..., :3].sigmoid()
-            if self.limit_3d_pts_to_pc_range:
-                out_coord[..., :3]=denormalize_lidar(out_coord[..., :3], self.pc_range)
-            out_coord=out_coord
-        elif self.limit_3d_pts_to_pc_range:
-            out_coord = clamp_to_lidar_range(out_coord.clone(), self.pc_range)
-        
+        # if self.use_inv_sigmoid:
+        #     out_coord[..., :3]=out_coord[..., :3].sigmoid()
+        #     if self.limit_3d_pts_to_pc_range:
+        #         out_coord[..., :3]=denormalize_lidar(out_coord[..., :3], self.pc_range)
+        #     out_coord=out_coord
+        # elif self.limit_3d_pts_to_pc_range:
+        #     out_coord = clamp_to_lidar_range(out_coord.clone(), self.pc_range)
 
         enc_pred_dict = {
             "cls_scores_enc": out_cls,

@@ -2,7 +2,7 @@ import torch
 from torch import nn
 from copy import deepcopy
 
-from mmcv.runner import BaseModule, Linear
+from mmcv.runner import BaseModule, Linear, bias_init_with_prob
 from mmcv.cnn.bricks.registry import PLUGIN_LAYERS
 
 from .lidar_utils import clamp_to_lidar_range
@@ -43,6 +43,11 @@ class AnchorRefinement(BaseModule):
         cls_branch.append(Linear(self.embed_dims, num_cls))
         self.cls_branch = nn.Sequential(*cls_branch)
 
+    def init_weights(self):
+        # NOTE: when integratign qt estimation, be careful of init by parents
+        bias_init = bias_init_with_prob(0.01)
+        nn.init.constant_(self.cls_branch[-1].bias, bias_init)
+
     def forward(self,
                 query,
                 anchors,
@@ -74,4 +79,4 @@ class AnchorRefinement(BaseModule):
         else:
             qt_out = None
 
-        return reg_out, cls_out, qt_out
+        return reg_out, cls_out

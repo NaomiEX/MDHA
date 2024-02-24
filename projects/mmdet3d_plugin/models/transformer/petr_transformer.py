@@ -256,7 +256,7 @@ class PETRTransformerDecoder(TransformerLayerSequence):
     #         nn.init.constant_(m[-1].bias, bias_init)
         
 
-    def forward(self, bbox_embed, query, *args, reference_points=None, lidar2img=None, extrinsics=None, 
+    def forward(self, anchor_refinements, query, *args, reference_points=None, lidar2img=None, extrinsics=None, 
                 orig_spatial_shapes=None, img_metas=None, num_cameras=6, **kwargs):
         if not self.return_intermediate:
             x = super().forward(query, *args, reference_points=None, **kwargs)
@@ -316,9 +316,9 @@ class PETRTransformerDecoder(TransformerLayerSequence):
                                 **kwargs)
             # query_out = self.post_norm(query) if self.post_norm else query
             query_out=torch.nan_to_num(query)
-
+            
             # cls_pred = self.cls_branches[lid](query_out)
-            coord_offset = bbox_embed[lid](query_out) # [B, Q, 10]
+            coord_offset = anchor_refinements[lid].reg_branch(query_out) # [B, Q, 10]
             if self.use_sigmoid_on_attn_out:
                 assert self.limit_3d_pts_to_pc_range, "sigmoid on attn output assumes output is limited to pc range"
                 if do_debug_process(self): print("PETR_TRANSFORMER: using sigmoid on attn out")

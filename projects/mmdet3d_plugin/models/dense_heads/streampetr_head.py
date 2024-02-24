@@ -49,6 +49,7 @@ class StreamPETRHead(AnchorFreeHead):
                  init_cfg=None,
 
                  ## new params
+                 anchor_refinement=None,
                  pos_embed3d=None,
                  use_spatial_alignment=False,
                  two_stage=False,
@@ -133,7 +134,6 @@ class StreamPETRHead(AnchorFreeHead):
                     attn_cfg['test_mode'] = True
         super(StreamPETRHead, self).__init__(num_classes, embed_dims, init_cfg = init_cfg)
 
-
         self.loss_cls = build_loss(loss_cls)
         self.loss_bbox = build_loss(loss_bbox)
         self.loss_iou = build_loss(loss_iou)
@@ -166,26 +166,30 @@ class StreamPETRHead(AnchorFreeHead):
         self._init_layers()
         self.reset_memory()
 
-        cls_branch = []
-        for _ in range(self.num_reg_fcs):
-            cls_branch.append(Linear(self.embed_dims, self.embed_dims))
-            cls_branch.append(nn.LayerNorm(self.embed_dims))
-            cls_branch.append(nn.ReLU(inplace=True))
-        cls_branch.append(Linear(self.embed_dims, self.cls_out_channels))
-        fc_cls = nn.Sequential(*cls_branch)
+        # self.anchor_refinement=build_plugin_layer(anchor_refinement)[1]
+        self.anchor_refinements = [build_plugin_layer(anchor_refinement)[1] 
+                                   for _ in range(self.num_decoder_layers)]
 
-        reg_branch = []
-        for _ in range(self.num_reg_fcs):
-            reg_branch.append(Linear(self.embed_dims, self.embed_dims))
-            reg_branch.append(nn.ReLU())
-        reg_branch.append(Linear(self.embed_dims, self.code_size))
-        reg_branch = nn.Sequential(*reg_branch)
+        # cls_branch = []
+        # for _ in range(self.num_reg_fcs):
+        #     cls_branch.append(Linear(self.embed_dims, self.embed_dims))
+        #     cls_branch.append(nn.LayerNorm(self.embed_dims))
+        #     cls_branch.append(nn.ReLU(inplace=True))
+        # cls_branch.append(Linear(self.embed_dims, self.cls_out_channels))
+        # fc_cls = nn.Sequential(*cls_branch)
 
-        num_branches = self.num_decoder_layers
-        self.cls_branches = nn.ModuleList(
-            [deepcopy(fc_cls) for _ in range(num_branches)])
-        self.reg_branches = nn.ModuleList(
-            [deepcopy(reg_branch) for _ in range(num_branches)])
+        # reg_branch = []
+        # for _ in range(self.num_reg_fcs):
+        #     reg_branch.append(Linear(self.embed_dims, self.embed_dims))
+        #     reg_branch.append(nn.ReLU())
+        # reg_branch.append(Linear(self.embed_dims, self.code_size))
+        # reg_branch = nn.Sequential(*reg_branch)
+
+        # num_branches = self.num_decoder_layers
+        # self.cls_branches = nn.ModuleList(
+        #     [deepcopy(fc_cls) for _ in range(num_branches)])
+        # self.reg_branches = nn.ModuleList(
+        #     [deepcopy(reg_branch) for _ in range(num_branches)])
 
     def _init_layers(self):
         self.memory_embed = nn.Sequential(
@@ -227,10 +231,8 @@ class StreamPETRHead(AnchorFreeHead):
             self.pseudo_reference_points.weight.requires_grad = False
 
         self.transformer.init_weights()
-        if self.loss_cls.use_sigmoid:
-            bias_init = bias_init_with_prob(0.01)
-            for m in self.cls_branches:
-                nn.init.constant_(m[-1].bias, bias_init)
+        for anchor_ref in self.anchor_refinements:
+            anchor_ref.init_weights()
        
     def reset_memory(self):
         self.memory_embedding = None
@@ -520,33 +522,35 @@ class StreamPETRHead(AnchorFreeHead):
         # out_ref_pts: sigmoided bbox predictions [num_dec_layers, B, Q, 3]
         # init_ref_pts: initial ref pts (in [0,1] range) [B, Q, 3]
         # NOTE: expecting all ref_pts to already be unnormalized
-        outs_dec, out_ref_pts, init_ref_pts = self.transformer(self.reg_branches, memory, tgt, query_pos, attn_mask,  
-                                        temp_memory=temp_memory, temp_pos=temp_pos,
-                                        reference_points = reference_points.clone(), lidar2img=data['lidar2img'],
-                                        extrinsics=data['extrinsics'], orig_spatial_shapes=orig_spatial_shapes, 
-                                        flattened_spatial_shapes=flattened_spatial_shapes, 
-                                        flattened_level_start_index=flattened_level_start_index,
-                                        img_metas=img_metas)
+        outs_dec, out_ref_pts, init_ref_pts = self.transformer(
+            self.anchor_refinements, 
+            memory, tgt, query_pos, attn_mask, temp_memory=temp_memory, temp_pos=temp_pos, 
+            reference_points = reference_points.clone(), lidar2img=data['lidar2img'], 
+            extrinsics=data['extrinsics'], orig_spatial_shapes=orig_spatial_shapes, 
+            flattened_spatial_shapes=flattened_spatial_shapes, 
+            flattened_level_start_index=flattened_level_start_index, img_metas=img_metas)
         
         outs_dec = torch.nan_to_num(outs_dec)
         outputs_classes = []
         outputs_coords = []
         for lvl in range(outs_dec.shape[0]):
-            outputs_class = self.cls_branches[lvl](outs_dec[lvl]) # [B, Q, num_classes]
-            out_coord_offset = self.reg_branches[lvl](outs_dec[lvl]) # [B, Q, 10]
-            if self.use_sigmoid_on_attn_out:
-                if self._iter == 0: print("DECODER: using sigmoid on attention out")
-                out_coord_offset[..., :3] = F.sigmoid(out_coord_offset[..., :3])
-                out_coord_offset[..., :3] = denormalize_lidar(out_coord_offset[..., :3], self.pc_range)
-            out_coord = out_coord_offset
-            if lvl == 0:
-                out_coord[..., 0:3] += init_ref_pts[..., 0:3]
-            else:
-                out_coord[..., 0:3] += out_ref_pts[lvl-1][..., 0:3]
-            
-
-            outputs_classes.append(outputs_class)
-            outputs_coords.append(out_coord)
+            # outputs_class = self.cls_branches[lvl](outs_dec[lvl]) # [B, Q, num_classes]
+            # out_coord_offset = self.reg_branches[lvl](outs_dec[lvl]) # [B, Q, 10]
+            # if self.use_sigmoid_on_attn_out:
+            #     if self._iter == 0: print("DECODER: using sigmoid on attention out")
+            #     out_coord_offset[..., :3] = F.sigmoid(out_coord_offset[..., :3])
+            #     out_coord_offset[..., :3] = denormalize_lidar(out_coord_offset[..., :3], self.pc_range)
+            # out_coord = out_coord_offset
+            # if lvl == 0:
+            #     out_coord[..., 0:3] += init_ref_pts[..., 0:3]
+            # else:
+            #     out_coord[..., 0:3] += out_ref_pts[lvl-1][..., 0:3]
+            anchor_init = init_ref_pts if lvl == 0 else out_ref_pts[lvl-1]
+            # TODO: time interval
+            reg_out, cls_out = self.anchor_refinements[lvl](outs_dec[lvl], anchor_init, query_pos, 
+                                                            time_interval=None, return_cls=True)
+            outputs_classes.append(cls_out)
+            outputs_coords.append(reg_out)
 
         all_cls_scores = torch.stack(outputs_classes) # [n_dec_layers, B, Q, num_classes]
         all_bbox_preds = torch.stack(outputs_coords) # [n_dec_layers, B, Q, 10]
