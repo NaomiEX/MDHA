@@ -178,20 +178,18 @@ class StreamPETRHead(AnchorFreeHead):
         # cls_branch.append(Linear(self.embed_dims, self.cls_out_channels))
         # fc_cls = nn.Sequential(*cls_branch)
 
-        reg_branch = []
-        for _ in range(self.num_reg_fcs):
-            reg_branch.append(Linear(self.embed_dims, self.embed_dims))
-            reg_branch.append(nn.ReLU())
-        reg_branch.append(Linear(self.embed_dims, self.code_size))
-        reg_branch = nn.Sequential(*reg_branch)
+        # reg_branch = []
+        # for _ in range(self.num_reg_fcs):
+        #     reg_branch.append(Linear(self.embed_dims, self.embed_dims))
+        #     reg_branch.append(nn.ReLU())
+        # reg_branch.append(Linear(self.embed_dims, self.code_size))
+        # reg_branch = nn.Sequential(*reg_branch)
 
         # num_branches = self.num_decoder_layers
         # self.cls_branches = nn.ModuleList(
         #     [deepcopy(fc_cls) for _ in range(num_branches)])
-        self.reg_branches = nn.ModuleList(
-            [deepcopy(reg_branch) for _ in range(self.num_decoder_layers)])
-        for i in range(self.num_decoder_layers):
-            self.anchor_refinements[i].reg_branch = self.reg_branches[i]
+        # self.reg_branches = nn.ModuleList(
+        #     [deepcopy(reg_branch) for _ in range(self.num_decoder_layers)])
 
     def _init_layers(self):
         self.memory_embed = nn.Sequential(
@@ -524,9 +522,8 @@ class StreamPETRHead(AnchorFreeHead):
         # out_ref_pts: sigmoided bbox predictions [num_dec_layers, B, Q, 3]
         # init_ref_pts: initial ref pts (in [0,1] range) [B, Q, 3]
         # NOTE: expecting all ref_pts to already be unnormalized
-        # reg_branches = [self.anchor_refinements[i].reg_branch for i in range(self.num_decoder_layers)]
         outs_dec, out_ref_pts, init_ref_pts = self.transformer(
-            self.reg_branches, memory, tgt, query_pos, attn_mask, temp_memory=temp_memory, 
+            self.anchor_refinements, memory, tgt, query_pos, attn_mask, temp_memory=temp_memory, 
             temp_pos=temp_pos, reference_points = reference_points.clone(), lidar2img=data['lidar2img'], 
             extrinsics=data['extrinsics'], orig_spatial_shapes=orig_spatial_shapes, 
             flattened_spatial_shapes=flattened_spatial_shapes, 

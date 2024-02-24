@@ -318,28 +318,30 @@ class PETRTransformerDecoder(TransformerLayerSequence):
             query_out=torch.nan_to_num(query)
             
             # cls_pred = self.cls_branches[lid](query_out)
-            coord_offset = anchor_refinements[lid](query_out) # [B, Q, 10]
-            if self.use_sigmoid_on_attn_out:
-                assert self.limit_3d_pts_to_pc_range, "sigmoid on attn output assumes output is limited to pc range"
-                if do_debug_process(self): print("PETR_TRANSFORMER: using sigmoid on attn out")
-                coord_offset[..., :3] = F.sigmoid(coord_offset[..., :3])
-                coord_offset[..., :3] = denormalize_lidar(coord_offset[..., :3], self.pc_range)
+            # TODO: integrate query pos
+            reg_out, _ = anchor_refinements[lid](query_out, ref_pts_unnormalized, query_pos=None, return_cls=False) # [B, Q, 10]
+            reference_points = unnormalized_ref_pts = reg_out[..., :3].detach().clone()
+            # if self.use_sigmoid_on_attn_out:
+            #     assert self.limit_3d_pts_to_pc_range, "sigmoid on attn output assumes output is limited to pc range"
+            #     if do_debug_process(self): print("PETR_TRANSFORMER: using sigmoid on attn out")
+            #     coord_offset[..., :3] = F.sigmoid(coord_offset[..., :3])
+            #     coord_offset[..., :3] = denormalize_lidar(coord_offset[..., :3], self.pc_range)
 
-            coord_pred = coord_offset
-            coord_pred[..., 0:3] = coord_pred[..., 0:3] + ref_pts_unnormalized[..., 0:3]
+            # coord_pred = coord_offset
+            # coord_pred[..., 0:3] = coord_pred[..., 0:3] + ref_pts_unnormalized[..., 0:3]
 
-            if self.use_inv_sigmoid:
-                coord_pred[..., 0:3] = coord_pred[..., 0:3].sigmoid()
-                reference_points = coord_pred[..., 0:3].detach().clone()
-            elif self.limit_3d_pts_to_pc_range:
-                if do_debug_process(self, repeating=True, interval=500):
-                    prop_out_of_range = not_in_lidar_range(coord_pred[..., 0:3], self.pc_range).sum().item() / coord_pred.size(1)
-                    print(f"coord prediction within decoder layer {lid} out of range: {prop_out_of_range}")
-                coord_pred[..., 0:3] = clamp_to_lidar_range(coord_pred[..., 0:3], self.pc_range)
-                unnormalized_ref_pts = coord_pred[..., 0:3].detach().clone()
-                reference_points = normalize_lidar(coord_pred[..., 0:3].detach().clone(), self.pc_range)
-            else:
-                reference_points = unnormalized_ref_pts = coord_pred[..., 0:3].detach().clone()
+            # if self.use_inv_sigmoid:
+            #     coord_pred[..., 0:3] = coord_pred[..., 0:3].sigmoid()
+            #     reference_points = coord_pred[..., 0:3].detach().clone()
+            # elif self.limit_3d_pts_to_pc_range:
+            #     if do_debug_process(self, repeating=True, interval=500):
+            #         prop_out_of_range = not_in_lidar_range(coord_pred[..., 0:3], self.pc_range).sum().item() / coord_pred.size(1)
+            #         print(f"coord prediction within decoder layer {lid} out of range: {prop_out_of_range}")
+            #     coord_pred[..., 0:3] = clamp_to_lidar_range(coord_pred[..., 0:3], self.pc_range)
+            #     unnormalized_ref_pts = coord_pred[..., 0:3].detach().clone()
+            #     reference_points = normalize_lidar(coord_pred[..., 0:3].detach().clone(), self.pc_range)
+            # else:
+            #     reference_points = unnormalized_ref_pts = coord_pred[..., 0:3].detach().clone()
 
             intermediate_reference_points.append(unnormalized_ref_pts)
             if self.post_norm is not None:
