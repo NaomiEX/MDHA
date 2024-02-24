@@ -96,6 +96,7 @@ class CustomDeformAttn(BaseModule):
         xavier_uniform_(self.output_proj.weight.data)
         constant_(self.output_proj.bias.data, 0.)
         self._is_init = True
+        print("CIRCULAR DEFORMABLE ATTENION RESET")
 
 
     def preprocess(self, query, key, value, query_pos, key_pos, spatial_shapes, reference_points,
