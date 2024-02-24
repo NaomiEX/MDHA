@@ -212,7 +212,7 @@ class Petr3D(MVXTwoStageDetector):
     
     def prepare_location_multiscale(self, img_metas, spatial_shapes, **data):
         if self.cached_locations is not None:
-            return self.cached_locations
+            return self.cached_locations.clone()
         
         assert self.mlvl_feats_format == MLVL_HNW
         pad_h, pad_w, _ = img_metas[0]['pad_shape'][0]
@@ -235,7 +235,7 @@ class Petr3D(MVXTwoStageDetector):
             locations_flattened.append(locations_flat)
 
         locations_flattened = torch.cat(locations_flattened, dim=1) # [B, h0*N*w0+..., 2]
-        self.cached_locations = locations_flattened
+        self.cached_locations = locations_flattened.clone()
         return locations_flattened
         
     def forward_pts_bbox(self, img_metas, enc_pred_dict=None, out_memory=None, dn_known_bboxs=None, 
