@@ -252,7 +252,7 @@ pts_bbox_head=dict(
                         ffn_drop=0.1,
                         act_cfg=dict(type="ReLU", inplace=True),
                     ),
-                    with_cp=False,  ###use checkpoint to save memory
+                    with_cp=True,  ###use checkpoint to save memory
                     operation_order=('self_attn', 'norm', 'cross_attn',
                                      'ffn', 'norm'),
                     batch_first=True,
@@ -289,7 +289,7 @@ model = dict(
         frozen_stages=-1,
         norm_eval=False,
         style="pytorch",
-        with_cp=False,
+        with_cp=True,
         out_indices=(0, 1, 2, 3),
         norm_cfg=dict(type="BN", requires_grad=True),
         pretrained="ckpt/resnet50-19c8e357.pth",
