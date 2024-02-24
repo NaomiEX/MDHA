@@ -219,8 +219,10 @@ class PETRTransformerDecoder(TransformerLayerSequence):
                  num_classes=10,
                  anchor_dims=10,
                  num_reg_fcs=2,
+                 limit_3d_pts_to_pc_range=True,
                  **kwargs):
         super(PETRTransformerDecoder, self).__init__(*args, **kwargs)
+        self.limit_3d_pts_to_pc_range=limit_3d_pts_to_pc_range
         self.pc_range = nn.Parameter(torch.tensor(
             pc_range), requires_grad=False)
         self.return_intermediate = return_intermediate
@@ -269,20 +271,19 @@ class PETRTransformerDecoder(TransformerLayerSequence):
                 x = self.post_norm(x)[None]
             return x
 
-        # intermediate = []
-        # intermediate_reference_points = []
         bbox_preds=[]
         cls_preds=[]
 
         cam_transformations = dict(lidar2img=lidar2img, lidar2cam=extrinsics)
 
         for lid, layer in enumerate(self.layers):
-            if self.use_inv_sigmoid:
-                ref_pts_unnormalized = inverse_sigmoid(reference_points.clone()) # R: lidar space
+            if self.limit_3d_pts_to_pc_range:
+                if self.use_inv_sigmoid:
+                    ref_pts_unnormalized = inverse_sigmoid(reference_points.clone()) # R: lidar space
+                else:
+                    ref_pts_unnormalized = denormalize_lidar(reference_points.clone(), self.pc_range) # R:lidar space
             else:
-                ref_pts_unnormalized = denormalize_lidar(reference_points.clone(), self.pc_range) # R:lidar space
-            # if lid == 0:
-            #     init_reference_point =ref_pts_unnormalized.clone()
+                ref_pts_unnormalized = reference_points
             # [B, Q, 2]
             with torch.no_grad():
                 if self.ref_pts_mode == "single":
@@ -320,37 +321,32 @@ class PETRTransformerDecoder(TransformerLayerSequence):
             query_out = self.post_norm(query) if self.post_norm else query
             query_out=torch.nan_to_num(query_out)
 
-            assert ref_pts_unnormalized is not None, "box refinement needs reference points!"
             cls_pred = self.cls_branches[lid](query_out)
             coord_offset = self.reg_branches[lid](query_out) # [B, Q, 10]
             if self.use_sigmoid_on_attn_out:
+                assert self.limit_3d_pts_to_pc_range, "sigmoid on attn output assumes output is limited to pc range"
                 if do_debug_process(self): print("PETR_TRANSFORMER: using sigmoid on attn out")
                 coord_offset[..., :3] = F.sigmoid(coord_offset[..., :3])
                 coord_offset[..., :3] = denormalize_lidar(coord_offset[..., :3], self.pc_range)
+
             coord_pred = coord_offset
-            assert ref_pts_unnormalized.shape[-1] == 3
             coord_pred[..., 0:3] = coord_pred[..., 0:3] + ref_pts_unnormalized[..., 0:3]
+
             if self.use_inv_sigmoid:
                 coord_pred[..., 0:3] = coord_pred[..., 0:3].sigmoid()
-                next_ref_pts = coord_pred[..., 0:3].detach().clone()
-                # unnormalized_ref_pts = inverse_sigmoid(coord_pred[..., 0:3].detach().clone())
-            else:
+                # next_ref_pts = coord_pred[..., 0:3].detach().clone()
+            elif self.limit_3d_pts_to_pc_range:
                 if do_debug_process(self, repeating=True, interval=500):
                     prop_out_of_range = not_in_lidar_range(coord_pred[..., 0:3], self.pc_range).sum().item() / coord_pred.size(1)
                     print(f"coord prediction within decoder layer {lid} out of range: {prop_out_of_range}")
                 coord_pred[..., 0:3] = clamp_to_lidar_range(coord_pred[..., 0:3], self.pc_range)
-                # unnormalized_ref_pts = coord_pred[..., 0:3].detach().clone()
-                next_ref_pts = normalize_lidar(coord_pred[..., 0:3].detach().clone(), self.pc_range)
+                # next_ref_pts = normalize_lidar(coord_pred[..., 0:3].detach().clone(), self.pc_range)
+
+            reference_points = coord_pred[..., 0:3].detach().clone()
 
             bbox_preds.append(coord_pred)
             cls_preds.append(cls_pred)
-            # if self.return_intermediate:
-            #     intermediate_reference_points.append(unnormalized_ref_pts)
-            #     if self.post_norm is not None:
-            #         intermediate.append(self.post_norm(query))
-            #     else:
-            #         intermediate.append(query)
-            reference_points = next_ref_pts
+            # reference_points = next_ref_pts
 
         return torch.stack(bbox_preds), torch.stack(cls_preds), query_out
 

@@ -380,9 +380,11 @@ class IQTransformerEncoder(TransformerLayerSequence):
             out_coord[..., :3] += output_proposals_unnormalized[..., :3]
         else:
             raise NotImplementedError()
+        
         if self.use_inv_sigmoid:
             out_coord[..., :3]=out_coord[..., :3].sigmoid()
-            out_coord[..., :3]=denormalize_lidar(out_coord[..., :3], self.pc_range)
+            if self.limit_3d_pts_to_pc_range:
+                out_coord[..., :3]=denormalize_lidar(out_coord[..., :3], self.pc_range)
             out_coord_final=out_coord
         elif self.limit_3d_pts_to_pc_range:
             out_coord_final = clamp_to_lidar_range(out_coord.clone(), self.pc_range)

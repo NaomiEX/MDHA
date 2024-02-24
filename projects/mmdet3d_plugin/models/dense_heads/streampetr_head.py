@@ -14,7 +14,6 @@ from mmdet.models.dense_heads.anchor_free_head import AnchorFreeHead
 from mmdet3d.core.bbox.coders import build_bbox_coder
 from projects.mmdet3d_plugin.core.bbox.util import normalize_bbox, clamp_to_rot_range
 
-from mmdet.models.utils import NormedLinear
 from projects.mmdet3d_plugin.models.utils.positional_encoding import pos2posemb3d, pos2posemb1d, nerf_positional_encoding
 from projects.mmdet3d_plugin.models.utils.misc import MLN, topk_gather, transform_reference_points, memory_refresh, SELayer_Linear
 from projects.mmdet3d_plugin.models.utils.lidar_utils import denormalize_lidar, clamp_to_lidar_range
@@ -48,7 +47,6 @@ class StreamPETRHead(AnchorFreeHead):
                  dn_weight = 1.0,
                  split = 0.5,
                  init_cfg=None,
-                 normedlinear=False,
 
                  ## new params
                  pos_embed3d=None,
@@ -61,6 +59,7 @@ class StreamPETRHead(AnchorFreeHead):
                  use_sigmoid_on_attn_out=False,
                  train_cfg=None,
                  test_cfg=dict(max_per_img=100),
+                 limit_3d_pts_to_pc_range=True,
                  **kwargs):
         # NOTE here use `AnchorFreeHead` instead of `TransformerHead`,
         # since it brings inconvenience when the initialization of
@@ -108,6 +107,7 @@ class StreamPETRHead(AnchorFreeHead):
             self.pos_embed3d=build_plugin_layer(pos_embed3d)[1]
         
         self.use_spatial_alignment=use_spatial_alignment
+        self.limit_3d_pts_to_pc_range=limit_3d_pts_to_pc_range
 
         self.scalar = scalar
         self.bbox_noise_scale = noise_scale
@@ -116,12 +116,12 @@ class StreamPETRHead(AnchorFreeHead):
         self.split = split 
 
         self.act_cfg = transformer.get('act_cfg', dict(type='ReLU', inplace=True))
-        self.normedlinear = normedlinear
         
         transformer['two_stage'] = two_stage
         transformer['decoder']['two_stage'] = two_stage
         transformer['decoder']['pc_range'] = pc_range
         transformer['decoder']['use_sigmoid_on_attn_out'] = use_sigmoid_on_attn_out
+        transformer['decoder']['limit_3d_pts_to_pc_range'] = limit_3d_pts_to_pc_range
 
         self.num_decoder_layers = transformer['decoder']['num_layers']
         self.two_stage=two_stage
@@ -132,6 +132,7 @@ class StreamPETRHead(AnchorFreeHead):
                 if attn_cfg['type'] == 'CustomDeformAttn':
                     attn_cfg['test_mode'] = True
         super(StreamPETRHead, self).__init__(num_classes, embed_dims, init_cfg = init_cfg)
+
 
         self.loss_cls = build_loss(loss_cls)
         self.loss_bbox = build_loss(loss_bbox)
@@ -164,30 +165,6 @@ class StreamPETRHead(AnchorFreeHead):
 
         self._init_layers()
         self.reset_memory()
-
-        # cls_branch = []
-        # for _ in range(self.num_reg_fcs):
-        #     cls_branch.append(Linear(self.embed_dims, self.embed_dims))
-        #     cls_branch.append(nn.LayerNorm(self.embed_dims))
-        #     cls_branch.append(nn.ReLU(inplace=True))
-        # if self.normedlinear:
-        #     cls_branch.append(NormedLinear(self.embed_dims, self.cls_out_channels))
-        # else:
-        #     cls_branch.append(Linear(self.embed_dims, self.cls_out_channels))
-        # fc_cls = nn.Sequential(*cls_branch)
-
-        # reg_branch = []
-        # for _ in range(self.num_reg_fcs):
-        #     reg_branch.append(Linear(self.embed_dims, self.embed_dims))
-        #     reg_branch.append(nn.ReLU())
-        # reg_branch.append(Linear(self.embed_dims, self.code_size))
-        # reg_branch = nn.Sequential(*reg_branch)
-
-        # self.cls_branches = nn.ModuleList(
-        #     [deepcopy(fc_cls) for _ in range(num_branches)])
-        # self.reg_branches = nn.ModuleList(
-        #     [deepcopy(reg_branch) for _ in range(num_branches)])
-
 
     def _init_layers(self):
         self.memory_embed = nn.Sequential(
@@ -303,7 +280,9 @@ class StreamPETRHead(AnchorFreeHead):
     def temporal_alignment(self, query_pos, tgt, reference_points):
         B = query_pos.size(0)
 
-        temp_reference_point = (self.memory_reference_point - self.pc_range[:3]) / (self.pc_range[3:6] - self.pc_range[0:3])
+        temp_reference_point = self.memory_reference_point
+        if self.limit_3d_pts_to_pc_range:
+            temp_reference_point = (temp_reference_point - self.pc_range[:3]) / (self.pc_range[3:6] - self.pc_range[0:3])
         temp_pos = self.query_embedding(pos2posemb3d(temp_reference_point)) 
         temp_memory = self.memory_embedding
         rec_ego_pose = torch.eye(4, device=query_pos.device).unsqueeze(0)\
@@ -375,9 +354,9 @@ class StreamPETRHead(AnchorFreeHead):
                 rand_prob = torch.rand_like(known_bbox_center) * 2 - 1.0
                 known_bbox_center += torch.mul(rand_prob,
                                             diff) * self.bbox_noise_scale
-                known_bbox_center[..., 0:3] = (known_bbox_center[..., 0:3] - self.pc_range[0:3]) / (self.pc_range[3:6] - self.pc_range[0:3])
-
-                known_bbox_center = known_bbox_center.clamp(min=0.0, max=1.0)
+                if self.limit_3d_pts_to_pc_range:
+                    known_bbox_center[..., 0:3] = (known_bbox_center[..., 0:3] - self.pc_range[0:3]) / (self.pc_range[3:6] - self.pc_range[0:3])
+                    known_bbox_center = known_bbox_center.clamp(min=0.0, max=1.0)
                 mask = torch.norm(rand_prob, 2, 1) > self.split
                 known_labels[mask] = self.num_classes
             
@@ -527,36 +506,6 @@ class StreamPETRHead(AnchorFreeHead):
                                         flattened_spatial_shapes=flattened_spatial_shapes, 
                                         flattened_level_start_index=flattened_level_start_index,
                                         img_metas=img_metas)
-        # outs_dec = torch.nan_to_num(outs_dec)
-        # outputs_classes = []
-        # outputs_coords = []
-        # for lvl in range(outs_dec.shape[0]):
-        #     outputs_class = self.cls_branches[lvl](outs_dec[lvl]) # [B, Q, num_classes]
-        #     out_coord_offset = self.reg_branches[lvl](outs_dec[lvl]) # [B, Q, 10]
-        #     if self.use_sigmoid_on_attn_out:
-        #         out_coord_offset[..., :3] = F.sigmoid(out_coord_offset[..., :3])
-        #         out_coord_offset[..., :3] = denormalize_lidar(out_coord_offset[..., :3], self.pc_range)
-        #     out_coord = out_coord_offset
-        #     if lvl == 0:
-        #         out_coord[..., 0:3] += init_ref_pts[..., 0:3]
-                
-        #     else:
-        #         out_coord[..., 0:3] += out_ref_pts[lvl-1][..., 0:3]
-            
-
-        #     outputs_classes.append(outputs_class)
-        #     outputs_coords.append(out_coord)
-
-        # all_cls_scores = torch.stack(outputs_classes) # [n_dec_layers, B, Q, num_classes]
-        # all_bbox_preds = torch.stack(outputs_coords) # [n_dec_layers, B, Q, 10]
-        
-        ## center point post processing
-        # if self.use_inv_sigmoid:
-        #     out_coord[..., 0:3] = out_coord[..., 0:3].sigmoid()
-        # if self.use_inv_sigmoid:
-        #     all_bbox_preds[..., 0:3] = denormalize_lidar(all_bbox_preds[..., 0:3], self.pc_range)
-        # else:
-        #     all_bbox_preds = clamp_to_lidar_range(all_bbox_preds, self.pc_range)
         
         # update the memory bank
         self.post_update_memory(data, rec_ego_pose, all_cls_scores, all_bbox_preds, query_out, mask_dict)
