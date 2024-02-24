@@ -86,7 +86,7 @@ GPUS_PER_NODE=2 MEM=160G ./tools/slurm_train.sh highprio mdha_12 2 ./projects/co
 ```
 
 # 4 GPU
-GPUS_PER_NODE=4 MEM=160G ./tools/slurm_train.sh highprio mdha_12_no3dpos 4 ./projects/configs/execution/cmdha_12pt_nopos3d_4gpu16bs.py ./work_dirs/cmdha_12pt_nopos3d_4gpu16bs
+GPUS_PER_NODE=4 MEM=160G ./tools/slurm_train.sh highprio mdha_12_nolimit 4 ./projects/configs/execution/cmdha_12pt_nolimit_4gpu16bs.py ./work_dirs/cmdha_12pt_nolimit_4gpu16bs_v2
 
 ## eval
 (local):

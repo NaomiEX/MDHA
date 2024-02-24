@@ -22,6 +22,19 @@ def topk_gather(feat, topk_indexes):
         feat = torch.gather(feat, 1, topk_indexes.repeat(1, 1, *feat_shape[2:]))
     return feat
 
+def linear_relu_ln(embed_dims, in_loops, out_loops, input_dims=None):
+    if input_dims is None:
+        input_dims = embed_dims
+    layers = []
+    for _ in range(out_loops):
+        for _ in range(in_loops):
+            layers.append(Linear(input_dims, embed_dims))
+            layers.append(nn.ReLU(inplace=True))
+            input_dims = embed_dims
+        layers.append(nn.LayerNorm(embed_dims))
+    return layers
+
+
 
 def apply_ltrb(locations, pred_ltrb): 
         """
