@@ -365,19 +365,18 @@ class IQTransformerEncoder(TransformerLayerSequence):
             out_coord_offset[..., :3] = F.sigmoid(out_coord_offset[..., :3])
             out_coord_offset[..., :3] = denormalize_lidar(out_coord_offset[..., :3], self.pc_range)
         out_coord = out_coord_offset
-        assert ((output_proposals >= 0.0) & (output_proposals <= 1.0)).all()
         if self.use_inv_sigmoid:
             if do_debug_process(self): print("using inverse sigmoid")
-            output_proposals_unnormalized = inverse_sigmoid(output_proposals)
+            output_proposals = inverse_sigmoid(output_proposals)
         else:
             if do_debug_process(self): print("NOT using inverse sigmoid")
             if self.limit_3d_pts_to_pc_range:
-                output_proposals_unnormalized = denormalize_lidar(output_proposals, self.pc_range)
-                assert not_in_lidar_range(output_proposals_unnormalized, self.pc_range).sum() == 0
-        
+                output_proposals = denormalize_lidar(output_proposals, self.pc_range)
+                assert not_in_lidar_range(output_proposals, self.pc_range).sum() == 0
+            
         if level == 0:
-            assert out_coord[..., :3].shape == output_proposals_unnormalized.shape
-            out_coord[..., :3] += output_proposals_unnormalized[..., :3]
+            assert out_coord[..., :3].shape == output_proposals.shape
+            out_coord[..., :3] += output_proposals[..., :3]
         else:
             raise NotImplementedError()
         
@@ -385,14 +384,14 @@ class IQTransformerEncoder(TransformerLayerSequence):
             out_coord[..., :3]=out_coord[..., :3].sigmoid()
             if self.limit_3d_pts_to_pc_range:
                 out_coord[..., :3]=denormalize_lidar(out_coord[..., :3], self.pc_range)
-            out_coord_final=out_coord
+            out_coord=out_coord
         elif self.limit_3d_pts_to_pc_range:
-            out_coord_final = clamp_to_lidar_range(out_coord.clone(), self.pc_range)
+            out_coord = clamp_to_lidar_range(out_coord.clone(), self.pc_range)
         
 
         enc_pred_dict = {
             "cls_scores_enc": out_cls,
-            "bbox_preds_enc": out_coord_final,
+            "bbox_preds_enc": out_coord,
             "sparse_token_num": n_sparse_tokens,
             "src_mask_prediction": mask_pred
         }

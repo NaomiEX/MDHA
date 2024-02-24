@@ -330,14 +330,16 @@ class PETRTransformerDecoder(TransformerLayerSequence):
 
             if self.use_inv_sigmoid:
                 coord_pred[..., 0:3] = coord_pred[..., 0:3].sigmoid()
-                # next_ref_pts = coord_pred[..., 0:3].detach().clone()
+                reference_points = coord_pred[..., 0:3].detach().clone()
             elif self.limit_3d_pts_to_pc_range:
                 if do_debug_process(self, repeating=True, interval=500):
                     prop_out_of_range = not_in_lidar_range(coord_pred[..., 0:3], self.pc_range).sum().item() / coord_pred.size(1)
                     print(f"coord prediction within decoder layer {lid} out of range: {prop_out_of_range}")
                 coord_pred[..., 0:3] = clamp_to_lidar_range(coord_pred[..., 0:3], self.pc_range)
                 unnormalized_ref_pts = coord_pred[..., 0:3].detach().clone()
-                next_ref_pts = normalize_lidar(coord_pred[..., 0:3].detach().clone(), self.pc_range)
+                reference_points = normalize_lidar(coord_pred[..., 0:3].detach().clone(), self.pc_range)
+            else:
+                reference_points = unnormalized_ref_pts = coord_pred[..., 0:3].detach().clone()
 
             intermediate_reference_points.append(unnormalized_ref_pts)
             if self.post_norm is not None:
@@ -345,7 +347,6 @@ class PETRTransformerDecoder(TransformerLayerSequence):
             else:
                 intermediate.append(query)
 
-            reference_points = next_ref_pts
             
 
         return torch.stack(intermediate), torch.stack(intermediate_reference_points), init_reference_point

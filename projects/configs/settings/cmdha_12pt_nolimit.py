@@ -188,6 +188,7 @@ pts_bbox_head=dict(
         num_propagated=256,
         with_ego_pos=True,
         with_dn=True,
+        limit_3d_pts_to_pc_range=limit_3d_pts_to_pc_range,
 
         **dn_args,
 

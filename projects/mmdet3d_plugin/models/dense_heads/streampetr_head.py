@@ -483,7 +483,7 @@ class StreamPETRHead(AnchorFreeHead):
 
         if not self.two_stage:
             raise NotImplementedError("WARNING: not using two stage")
-        else:
+        elif self.limit_3d_pts_to_pc_range:
             reference_points = torch.clamp(reference_points.clone(),min=0.0, max=1.0)
         # reference_points: [B, pad_size+Nq, 3] normalized in lidar range [0,1]
         # attn_mask: [pad_size + Nq + num_propagated,  pad_size + Nq + memory_len] | None
