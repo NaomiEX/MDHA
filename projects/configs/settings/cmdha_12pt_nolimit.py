@@ -37,8 +37,8 @@ mlvl_feats_formats = {
 
 mlvl_feats_format = mlvl_feats_formats["[B, HNW, C]"]
 
-spatial_alignment=None
-pos_embed3d=None
+spatial_alignment="encoder"
+pos_embed3d="encoder"
 
 use_inv_sigmoid = {
     "encoder": False,
