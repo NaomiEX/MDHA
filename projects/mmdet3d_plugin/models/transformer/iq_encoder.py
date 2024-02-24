@@ -5,7 +5,7 @@ import copy
 import numpy as np
 from torch import nn
 import torch.nn.functional as F
-from mmcv.cnn import Linear, xavier_init, build_norm_layer
+from mmcv.cnn import Linear, xavier_init, build_norm_layer, bias_init_with_prob
 from mmcv.cnn.bricks.transformer import (TransformerLayerSequence, BaseTransformerLayer, 
                                          TRANSFORMER_LAYER_SEQUENCE, TRANSFORMER_LAYER)
 from mmcv.cnn.bricks.plugin import build_plugin_layer
@@ -192,15 +192,27 @@ class IQTransformerEncoder(TransformerLayerSequence):
             raise NotImplementedError("right now only using 1 encoder layer")
     
     def init_weights(self):
+        for name, p in self.named_parameters():
+            if 'cls_branch' in name or 'reg_branch' in name or 'attention' in name:
+                continue
+            if p is not None and p.dim() > 1 and p.requires_grad:
+                nn.init.xavier_uniform_(p)
+
         for m in self.modules():
+            if m == self: continue
             if isinstance(m, CustomDeformAttn):
-                assert m.is_init == False
+                # assert m.is_init == False
                 m.reset_parameters()
-            elif isinstance(m, (MaskPredictor, DepthNet)):
+            elif hasattr(m, "init_weights"):
                 m.init_weights()
-            if hasattr(m, 'weight') and m.weight is not None and \
-                m.weight.requires_grad and m.weight.dim() > 1:
-                xavier_init(m, distribution='uniform')
+        
+        for m in self.cls_branches:
+            bias_init = bias_init_with_prob(0.01)
+            nn.init.constant_(m[-1].bias, bias_init)
+        
+            # if hasattr(m, 'weight') and m.weight is not None and \
+            #     m.weight.requires_grad and m.weight.dim() > 1:
+            #     xavier_init(m, distribution='uniform')
         
         self._is_init = True
 
