@@ -58,8 +58,7 @@ class AnchorRefinement(BaseModule):
                 return_cls=True,
                 ):
         if do_debug_process(self): print(f"ANCHOR REFINE STATE: {self.refine_state}")
-        # TODO: use query + query_pos
-        feature = query
+        feature = query+query_pos
 
         reg_out = self.reg_branch(feature)
         reg_out[..., self.refine_state] = reg_out[..., self.refine_state] \

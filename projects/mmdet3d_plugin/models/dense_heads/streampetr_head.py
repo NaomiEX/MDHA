@@ -170,27 +170,6 @@ class StreamPETRHead(AnchorFreeHead):
         self.anchor_refinements = nn.ModuleList(
             [deepcopy(anchor_refinement) for _ in range(self.num_decoder_layers)])
 
-        # cls_branch = []
-        # for _ in range(self.num_reg_fcs):
-        #     cls_branch.append(Linear(self.embed_dims, self.embed_dims))
-        #     cls_branch.append(nn.LayerNorm(self.embed_dims))
-        #     cls_branch.append(nn.ReLU(inplace=True))
-        # cls_branch.append(Linear(self.embed_dims, self.cls_out_channels))
-        # fc_cls = nn.Sequential(*cls_branch)
-
-        # reg_branch = []
-        # for _ in range(self.num_reg_fcs):
-        #     reg_branch.append(Linear(self.embed_dims, self.embed_dims))
-        #     reg_branch.append(nn.ReLU())
-        # reg_branch.append(Linear(self.embed_dims, self.code_size))
-        # reg_branch = nn.Sequential(*reg_branch)
-
-        # num_branches = self.num_decoder_layers
-        # self.cls_branches = nn.ModuleList(
-        #     [deepcopy(fc_cls) for _ in range(num_branches)])
-        # self.reg_branches = nn.ModuleList(
-        #     [deepcopy(reg_branch) for _ in range(self.num_decoder_layers)])
-
     def _init_layers(self):
         self.memory_embed = nn.Sequential(
                 nn.Linear(self.embed_dims, self.embed_dims),
@@ -527,7 +506,8 @@ class StreamPETRHead(AnchorFreeHead):
             temp_pos=temp_pos, reference_points = reference_points.clone(), lidar2img=data['lidar2img'], 
             extrinsics=data['extrinsics'], orig_spatial_shapes=orig_spatial_shapes, 
             flattened_spatial_shapes=flattened_spatial_shapes, 
-            flattened_level_start_index=flattened_level_start_index, img_metas=img_metas)
+            flattened_level_start_index=flattened_level_start_index, img_metas=img_metas,
+            query_embedding=self.query_embedding)
         
 
         outs_dec = torch.nan_to_num(outs_dec)

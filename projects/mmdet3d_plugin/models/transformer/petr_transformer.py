@@ -27,6 +27,7 @@ from mmcv.runner import auto_fp16
 
 from ..utils.projections import Projections, convert_3d_to_2d_global_cam_ref_pts, convert_3d_to_mult_2d_global_cam_ref_pts
 from ..utils.lidar_utils import denormalize_lidar, normalize_lidar, clamp_to_lidar_range, not_in_lidar_range
+from ..utils.positional_encoding import pos2posemb3d
 from projects.mmdet3d_plugin.attentions.custom_deform_attn import CustomDeformAttn
 from projects.mmdet3d_plugin.models.utils.debug import *
 
@@ -163,7 +164,7 @@ class PETRTemporalTransformer(BaseModule):
                 temp_memory=None, temp_pos=None, mask=None, reference_points=None, 
                 lidar2img=None, extrinsics=None, orig_spatial_shapes=None,
                 flattened_spatial_shapes=None, flattened_level_start_index=None,
-                img_metas=None):
+                img_metas=None, query_embedding=None):
         
         assert self.two_stage
 
@@ -188,6 +189,7 @@ class PETRTemporalTransformer(BaseModule):
             flattened_spatial_shapes=flattened_spatial_shapes, 
             flattened_level_start_index=flattened_level_start_index,
             img_metas=img_metas,
+            query_embedding=query_embedding,
             )
         return outs_decoder
 
@@ -209,13 +211,12 @@ class PETRTransformerDecoder(TransformerLayerSequence):
                  ref_pts_mode="single",
                  use_inv_sigmoid=False,
                  use_sigmoid_on_attn_out=False,
-                 num_classes=10,
-                 anchor_dims=10,
-                 num_reg_fcs=2,
                  limit_3d_pts_to_pc_range=False,
+                 update_pos=False,
                  **kwargs):
         super(PETRTransformerDecoder, self).__init__(*args, **kwargs)
         self.limit_3d_pts_to_pc_range=limit_3d_pts_to_pc_range
+        self.update_pos=update_pos
         self.pc_range = nn.Parameter(torch.tensor(
             pc_range), requires_grad=False)
         self.return_intermediate = return_intermediate
@@ -229,35 +230,11 @@ class PETRTransformerDecoder(TransformerLayerSequence):
         self.two_stage=two_stage
         self.use_inv_sigmoid=use_inv_sigmoid
         self.use_sigmoid_on_attn_out=use_sigmoid_on_attn_out
-
-        # cls_branch = []
-        # for _ in range(num_reg_fcs):
-        #     cls_branch.append(Linear(self.embed_dims, self.embed_dims))
-        #     cls_branch.append(nn.LayerNorm(self.embed_dims))
-        #     cls_branch.append(nn.ReLU(inplace=True))
-        # cls_branch.append(Linear(self.embed_dims, num_classes))
-        # cls_branch = nn.Sequential(*cls_branch)
-
-        # reg_branch = []
-        # for _ in range(num_reg_fcs):
-        #     reg_branch.append(Linear(self.embed_dims, self.embed_dims))
-        #     reg_branch.append(nn.ReLU())
-        # reg_branch.append(Linear(self.embed_dims, anchor_dims))
-        # reg_branch = nn.Sequential(*reg_branch)
-
-        # self.cls_branches = nn.ModuleList(
-        #     [deepcopy(cls_branch) for _ in range(self.num_layers)])
-        # self.reg_branches = nn.ModuleList(
-        #     [deepcopy(reg_branch) for _ in range(self.num_layers)])
-
-    # def init_weights(self):
-    #     bias_init = bias_init_with_prob(0.01)
-    #     for m in self.cls_branches:
-    #         nn.init.constant_(m[-1].bias, bias_init)
         
 
-    def forward(self, anchor_refinements, query, *args, reference_points=None, lidar2img=None, extrinsics=None, 
-                orig_spatial_shapes=None, img_metas=None, num_cameras=6, **kwargs):
+    def forward(self, anchor_refinements, query, *args, query_pos=None, reference_points=None, 
+                lidar2img=None, extrinsics=None, orig_spatial_shapes=None, img_metas=None, query_embedding=None,
+                **kwargs):
         if not self.return_intermediate:
             x = super().forward(query, *args, reference_points=None, **kwargs)
             if self.post_norm:
@@ -279,7 +256,7 @@ class PETRTransformerDecoder(TransformerLayerSequence):
                 ref_pts_unnormalized = reference_points
 
             if lid == 0:
-                init_reference_point =ref_pts_unnormalized.clone()
+                init_reference_point = ref_pts_unnormalized.clone()
             # [B, Q, 2]
             with torch.no_grad():
                 if self.ref_pts_mode == "single":
@@ -309,7 +286,7 @@ class PETRTransformerDecoder(TransformerLayerSequence):
             # query: [B, Q, C]
             # sampling_locs: [B, Q, n_heads, n_levels, n_points, 2]
             # attn_weights: [B, Q, n_heads, n_levels, n_points]
-            query = layer(query, *args, reference_points=reference_points_2d_cam, 
+            query = layer(query, *args, query_pos=query_pos, reference_points=reference_points_2d_cam, 
                                 orig_spatial_shapes=orig_spatial_shapes, num_cameras=6, 
                                 num_second_matches=num_second_matches, second_matches_valid_idxs=second_matches_valid_idxs,
                                 idx_with_second_match=idx_with_second_match,
@@ -319,30 +296,12 @@ class PETRTransformerDecoder(TransformerLayerSequence):
             
             # cls_pred = self.cls_branches[lid](query_out)
             # TODO: integrate query pos
-            reg_out, _ = anchor_refinements[lid](query_out, ref_pts_unnormalized, query_pos=None, return_cls=False) # [B, Q, 10]
+            reg_out, _ = anchor_refinements[lid](query_out, ref_pts_unnormalized, query_pos=query_pos, return_cls=False) # [B, Q, 10]
             reference_points = unnormalized_ref_pts = reg_out[..., :3].detach().clone()
-            # if self.use_sigmoid_on_attn_out:
-            #     assert self.limit_3d_pts_to_pc_range, "sigmoid on attn output assumes output is limited to pc range"
-            #     if do_debug_process(self): print("PETR_TRANSFORMER: using sigmoid on attn out")
-            #     coord_offset[..., :3] = F.sigmoid(coord_offset[..., :3])
-            #     coord_offset[..., :3] = denormalize_lidar(coord_offset[..., :3], self.pc_range)
 
-            # coord_pred = coord_offset
-            # coord_pred[..., 0:3] = coord_pred[..., 0:3] + ref_pts_unnormalized[..., 0:3]
-
-            # if self.use_inv_sigmoid:
-            #     coord_pred[..., 0:3] = coord_pred[..., 0:3].sigmoid()
-            #     reference_points = coord_pred[..., 0:3].detach().clone()
-            # elif self.limit_3d_pts_to_pc_range:
-            #     if do_debug_process(self, repeating=True, interval=500):
-            #         prop_out_of_range = not_in_lidar_range(coord_pred[..., 0:3], self.pc_range).sum().item() / coord_pred.size(1)
-            #         print(f"coord prediction within decoder layer {lid} out of range: {prop_out_of_range}")
-            #     coord_pred[..., 0:3] = clamp_to_lidar_range(coord_pred[..., 0:3], self.pc_range)
-            #     unnormalized_ref_pts = coord_pred[..., 0:3].detach().clone()
-            #     reference_points = normalize_lidar(coord_pred[..., 0:3].detach().clone(), self.pc_range)
-            # else:
-            #     reference_points = unnormalized_ref_pts = coord_pred[..., 0:3].detach().clone()
-
+            if self.update_pos:
+                query_pos = query_embedding(pos2posemb3d(reference_points))
+            
             intermediate_reference_points.append(unnormalized_ref_pts)
             if self.post_norm is not None:
                 intermediate.append(self.post_norm(query))
