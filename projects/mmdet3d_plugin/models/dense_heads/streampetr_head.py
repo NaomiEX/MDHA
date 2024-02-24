@@ -543,8 +543,6 @@ class StreamPETRHead(AnchorFreeHead):
                 out_coord[..., 0:3] += init_ref_pts[..., 0:3]
             else:
                 out_coord[..., 0:3] += out_ref_pts[lvl-1][..., 0:3]
-                if self.refine_all:
-                    out_coord[..., 3:] += outputs_coords[-1][..., 3:]
             
 
             outputs_classes.append(outputs_class)
