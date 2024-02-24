@@ -22,6 +22,7 @@ from ..utils.mask_predictor import MaskPredictor
 from ..utils.lidar_utils import normalize_lidar, denormalize_lidar, clamp_to_lidar_range, not_in_lidar_range
 from ..utils.misc import flatten_mlvl, groupby_agg_mean
 from ..utils.debug import *
+from ..utils.anchor_refine import AnchorRefinement
 from ..detectors.depthnet import DepthNet
 
 @TRANSFORMER_LAYER_SEQUENCE.register_module()
@@ -194,7 +195,7 @@ class IQTransformerEncoder(TransformerLayerSequence):
             raise NotImplementedError("right now only using 1 encoder layer")
     
     def init_weights(self):
-        to_skip=['cls_branch', 'reg_branch', 'qt', 'attention']
+        to_skip=['cls_branch', 'qt', 'attention']
         for name, p in self.named_parameters():
             if any([n in name for n in to_skip]):
                 continue
