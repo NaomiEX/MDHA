@@ -92,11 +92,11 @@ class IQTransformerEncoder(TransformerLayerSequence):
         self.use_spatial_alignment=use_spatial_alignment
         if self.use_spatial_alignment:
             self.spatial_alignment = MLN(8)
+            if self.use_pos_embed3d:
+                self.featurized_pe = SELayer_Linear(self.embed_dims)
 
         self.depth_start=depth_start # 1
         self.depth_range=position_range[3] - self.depth_start
-        if self.use_pos_embed3d:
-            self.featurized_pe = SELayer_Linear(self.embed_dims)
         if self.use_pos_embed3d:
             self.pos_embed3d = build_plugin_layer(pos_embed3d)[1]
 
@@ -256,7 +256,7 @@ class IQTransformerEncoder(TransformerLayerSequence):
         src = self.src_embed(src) # [B, h0*N*w0+..., C] # M:0.55GB
         
         img2lidar=None
-        if self.use_pos_embed3d:
+        if self.use_pos_embed3d or self.use_spatial_alignment:
             # pos_embed3d: [B, h0*N*w0+..., C],  cone: [B, h0*N*w0+..., 8], img2lidar: # [B, h0*N*w0+..., 4, 4]
             # mem:1.8GB
             pos_embed3d, cone, img2lidar = self.pos_embed3d(data, locations_flatten, img_metas, 
@@ -264,13 +264,10 @@ class IQTransformerEncoder(TransformerLayerSequence):
             if self.use_spatial_alignment:
                 # mem: 0.92GB
                 src = self.spatial_alignment(src, cone) # [B, h0*N*w0+..., C]
-            # [B, h0*N*w0+..., C]
-            # mem: 0.738GB
-            # ! TODO: NEED TO PULL THIS OUT TO TAKE INTO ACCOUNT OF CASE WHERE POS_EMBED3D IS GENERATED FROM PETR3D
-            pos_embed3d = self.featurized_pe(pos_embed3d, src)
-            if pos.size(1) < pos_embed3d.size(1):
-                pos_embed3d=torch.gather(pos_embed3d, 1, top_rho_inds.unsqueeze(-1).repeat(1, 1, pos_embed3d.size(-1)))
-            assert pos.shape == pos_embed3d.shape
+                if self.use_pos_embed3d:
+                    # [B, h0*N*w0+..., C]
+                    # mem: 0.738GB
+                    pos_embed3d = self.featurized_pe(pos_embed3d, src)
             if self.encode_3dpos_method == "add":
                 pos = pos + pos_embed3d
             elif self.encode_3dpos_method == "mln":

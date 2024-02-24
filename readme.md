@@ -70,7 +70,7 @@ sbatch compile.job
 ## run
 (local):
 ```bash
-tools/dist_train.sh projects/configs/execution/mdha_12pt_clean_1gpu2bs.py 1 --work-dir work_dirs/mdha_12pt_clean_1gpu2bs
+tools/dist_train.sh projects/configs/execution/cmdha_12pt_nopos3d_1gpu2bs.py 1 --work-dir work_dirs/cmdha_12pt_nopos3d_1gpu2bs
 ```
 
 (local, 2gpu):
@@ -82,11 +82,11 @@ tools/dist_train.sh projects/configs/execution_settings/s4dv3_2gpu_8bs.py 2 --wo
 NOTE: for bs48, MEM=100-120G should work, for bs32, MEM=80G works
 NOTE: use either gpu2,3,6
 ```bash
-GPUS_PER_NODE=2 MEM=160G ./tools/slurm_train.sh highprio mdha_12 2 ./projects/configs/execution/mdha_12pt_2gpu16bs.py ./work_dirs/mdha_12pt_2gpu16bs
+GPUS_PER_NODE=2 MEM=160G ./tools/slurm_train.sh highprio mdha_12 2 ./projects/configs/execution/cmdha_12pt_nopos3d_4gpu16bs.py ./work_dirs/cmdha_12pt_nopos3d_4gpu16bs
 ```
 
 # 4 GPU
-GPUS_PER_NODE=4 MEM=160G ./tools/slurm_train.sh highprio mdha_12_asymffn 4 ./projects/configs/execution/mdha_12pt_asymffn_4gpu16bs_nocp.py ./work_dirs/mdha_12pt_asymffn_4gpu16bs_nocp
+GPUS_PER_NODE=4 MEM=160G ./tools/slurm_train.sh highprio mdha_12_no3dpos 4 ./projects/configs/execution/cmdha_12pt_nopos3d_4gpu16bs.py ./work_dirs/cmdha_12pt_nopos3d_4gpu16bs
 
 ## eval
 (local):

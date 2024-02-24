@@ -107,6 +107,8 @@ class Petr3D(MVXTwoStageDetector):
         self.calc_depth_pred_loss=calc_depth_pred_loss
         if calc_depth_pred_loss: 
             assert self.depth_net is not None or (self.use_encoder and self.encoder.depth_net is not None)
+
+        self.cached_locations=None
         
         ## debug init
         self.debug = Debug(**debug_args)
@@ -209,6 +211,9 @@ class Petr3D(MVXTwoStageDetector):
 
     
     def prepare_location_multiscale(self, img_metas, spatial_shapes, **data):
+        if self.cached_locations is not None:
+            return self.cached_locations
+        
         assert self.mlvl_feats_format == MLVL_HNW
         pad_h, pad_w, _ = img_metas[0]['pad_shape'][0]
         B, N, *_ = data['img_feats'][0].shape
@@ -230,6 +235,7 @@ class Petr3D(MVXTwoStageDetector):
             locations_flattened.append(locations_flat)
 
         locations_flattened = torch.cat(locations_flattened, dim=1) # [B, h0*N*w0+..., 2]
+        self.cached_locations = locations_flattened
         return locations_flattened
         
     def forward_pts_bbox(self, img_metas, enc_pred_dict=None, out_memory=None, dn_known_bboxs=None, 

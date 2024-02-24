@@ -72,7 +72,6 @@ class PositionEmbedding3d(BaseModule):
             img2lidars_all.append(img2lidars_rep.flatten(1, 3)) # [B, h*N*w, 4, 4]
         intrinsic_all = torch.cat(intrinsic_all, 1) # [B, h0*N*w0+..., 2]
         img2lidars_all = torch.cat(img2lidars_all, 1) # [B, h0*N*w0+..., 4, 4]
-        # print(orig_spatial_shapes)
         assert list(intrinsic_all.shape) == list(data['img_feats_flatten'].shape[:-1]) + [2], \
             f"intrinsic_all shape: {intrinsic_all.shape} expecting: {data['img_feats_flatten'].shape}"
         pad_h, pad_w, _ = img_metas[0]['pad_shape'][0]
