@@ -14,6 +14,7 @@ class AnchorEmbedding(BaseModule):
                  embed_center_only=True,
                  output_dims=256,
                  ):
+        super().__init__()
         self.mode = mode
         self.embed_center_only=embed_center_only
         if not embed_center_only: 

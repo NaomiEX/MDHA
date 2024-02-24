@@ -39,6 +39,7 @@ class IQTransformerEncoder(TransformerLayerSequence):
                  use_sigmoid_on_attn_out=False, 
                  num_classes=10, 
                  limit_3d_pts_to_pc_range=True,
+                 anchor_refinement=None,
                  ## sparsification
                  mask_predictor=None,
                  sparse_rho=1.0, 
@@ -113,7 +114,7 @@ class IQTransformerEncoder(TransformerLayerSequence):
         if self.use_mask_predictor:
             raise NotImplementedError()
             self.mask_predictor = build_plugin_layer(mask_predictor)[1]
-
+        self.anchor_refinement=build_plugin_layer(anchor_refinement)[1]
         self.sparse_rho = sparse_rho
 
         self.src_embed = nn.Sequential(
@@ -169,24 +170,24 @@ class IQTransformerEncoder(TransformerLayerSequence):
             self.pos3d_encoding = MLN(self.embed_dims)
 
         ## pred branches
-        cls_branch = []
-        for _ in range(2):
-            cls_branch.append(Linear(self.embed_dims, self.embed_dims))
-            cls_branch.append(nn.LayerNorm(self.embed_dims))
-            cls_branch.append(nn.ReLU(inplace=True))
-        cls_branch.append(Linear(self.embed_dims, self.num_classes))
-        fc_cls = nn.Sequential(*cls_branch)
+        # cls_branch = []
+        # for _ in range(2):
+        #     cls_branch.append(Linear(self.embed_dims, self.embed_dims))
+        #     cls_branch.append(nn.LayerNorm(self.embed_dims))
+        #     cls_branch.append(nn.ReLU(inplace=True))
+        # cls_branch.append(Linear(self.embed_dims, self.num_classes))
+        # fc_cls = nn.Sequential(*cls_branch)
 
-        reg_branch = []
-        for _ in range(2):
-            reg_branch.append(Linear(self.embed_dims, self.embed_dims))
-            reg_branch.append(nn.ReLU())
-        reg_branch.append(Linear(self.embed_dims, self.code_size))
-        reg_branch = nn.Sequential(*reg_branch)
-        self.cls_branches = nn.ModuleList(
-            [copy.deepcopy(fc_cls) for _ in range(self.num_layers)])
-        self.reg_branches = nn.ModuleList(
-            [copy.deepcopy(reg_branch) for _ in range(self.num_layers)])
+        # reg_branch = []
+        # for _ in range(2):
+        #     reg_branch.append(Linear(self.embed_dims, self.embed_dims))
+        #     reg_branch.append(nn.ReLU())
+        # reg_branch.append(Linear(self.embed_dims, self.code_size))
+        # reg_branch = nn.Sequential(*reg_branch)
+        # self.cls_branches = nn.ModuleList(
+        #     [copy.deepcopy(fc_cls) for _ in range(self.num_layers)])
+        # self.reg_branches = nn.ModuleList(
+        #     [copy.deepcopy(reg_branch) for _ in range(self.num_layers)])
         
         if self.num_layers > 1:
             raise NotImplementedError("right now only using 1 encoder layer")
