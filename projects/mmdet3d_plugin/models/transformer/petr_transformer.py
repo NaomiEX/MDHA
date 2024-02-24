@@ -30,6 +30,7 @@ from ..utils.lidar_utils import denormalize_lidar, normalize_lidar, clamp_to_lid
 from ..utils.positional_encoding import pos2posemb3d
 from projects.mmdet3d_plugin.attentions.custom_deform_attn import CustomDeformAttn
 from projects.mmdet3d_plugin.models.utils.debug import *
+from projects.mmdet3d_plugin.models.utils.misc import MLN
 
 class MultiheadAttentionWrapper(nn.MultiheadAttention):
     def __init__(self, *args, **kwargs):
@@ -148,7 +149,7 @@ class PETRTemporalTransformer(BaseModule):
     def init_weights(self):
         # follow the official DETR to init parameters
         for m in self.modules():
-            if hasattr(m, 'weight') and m.weight.dim() > 1:
+            if hasattr(m, 'weight') and m.weight is not None and m.weight.dim() > 1:
                 xavier_init(m, distribution='uniform')
         # custom init for attention
         for i in range(self.decoder.num_layers):
@@ -156,6 +157,10 @@ class PETRTemporalTransformer(BaseModule):
                 if isinstance(attn, CustomDeformAttn):
                     assert attn.is_init == False
                     attn.reset_parameters()
+
+        for m in self.modules():
+            if isinstance(m, MLN):
+                m.reset_parameters()
         
         self._is_init = True
 
@@ -204,6 +209,7 @@ class PETRTransformerDecoder(TransformerLayerSequence):
 
     def __init__(self,
                  *args,
+                 embed_dims=256,
                  post_norm_cfg=dict(type='LN'),
                  return_intermediate=False,
                  pc_range=None,
@@ -217,6 +223,8 @@ class PETRTransformerDecoder(TransformerLayerSequence):
         super(PETRTransformerDecoder, self).__init__(*args, **kwargs)
         self.limit_3d_pts_to_pc_range=limit_3d_pts_to_pc_range
         self.update_pos=update_pos
+        if update_pos:
+            self.pos_updater=MLN(embed_dims)
         self.pc_range = nn.Parameter(torch.tensor(
             pc_range), requires_grad=False)
         self.return_intermediate = return_intermediate
@@ -243,6 +251,7 @@ class PETRTransformerDecoder(TransformerLayerSequence):
 
         intermediate = []
         intermediate_reference_points = []
+        intermediate_query_pos = []
 
         cam_transformations = dict(lidar2img=lidar2img, lidar2cam=extrinsics)
 
@@ -300,15 +309,19 @@ class PETRTransformerDecoder(TransformerLayerSequence):
             reference_points = unnormalized_ref_pts = reg_out[..., :3].detach().clone()
 
             if self.update_pos:
-                query_pos = query_embedding(pos2posemb3d(reference_points))
+                if do_debug_process(self): print("UPDATING POS")
+                new_pos = query_embedding(pos2posemb3d(reference_points))
+                query_pos = self.pos_updater(query_pos, new_pos)
             
             intermediate_reference_points.append(unnormalized_ref_pts)
+            intermediate_query_pos.append(query_pos)
             if self.post_norm is not None:
                 intermediate.append(self.post_norm(query))
             else:
                 intermediate.append(query)
 
-        return torch.stack(intermediate), torch.stack(intermediate_reference_points), init_reference_point
+        return torch.stack(intermediate), torch.stack(intermediate_reference_points), \
+            torch.stack(intermediate_query_pos) , init_reference_point
 
 @TRANSFORMER_LAYER.register_module()
 class PETRTemporalDecoderLayer(BaseModule):

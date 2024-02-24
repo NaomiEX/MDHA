@@ -497,11 +497,12 @@ class StreamPETRHead(AnchorFreeHead):
         tgt, query_pos, reference_points, temp_memory, temp_pos, rec_ego_pose = \
             self.temporal_alignment(query_pos, tgt, reference_points)
         
+        query_pos_init = query_pos.clone()
         # outs_dec: [num_dec_layers, B, Q, C]
         # out_ref_pts: sigmoided bbox predictions [num_dec_layers, B, Q, 3]
         # init_ref_pts: initial ref pts (in [0,1] range) [B, Q, 3]
         # NOTE: expecting all ref_pts to already be unnormalized
-        outs_dec, out_ref_pts, init_ref_pts = self.transformer(
+        outs_dec, out_ref_pts, out_pos, init_ref_pts = self.transformer(
             self.anchor_refinements, memory, tgt, query_pos, attn_mask, temp_memory=temp_memory, 
             temp_pos=temp_pos, reference_points = reference_points.clone(), lidar2img=data['lidar2img'], 
             extrinsics=data['extrinsics'], orig_spatial_shapes=orig_spatial_shapes, 
@@ -514,20 +515,10 @@ class StreamPETRHead(AnchorFreeHead):
         outputs_classes = []
         outputs_coords = []
         for lvl in range(outs_dec.shape[0]):
-            # outputs_class = self.cls_branches[lvl](outs_dec[lvl]) # [B, Q, num_classes]
-            # out_coord_offset = self.reg_branches[lvl](outs_dec[lvl]) # [B, Q, 10]
-            # if self.use_sigmoid_on_attn_out:
-            #     if self._iter == 0: print("DECODER: using sigmoid on attention out")
-            #     out_coord_offset[..., :3] = F.sigmoid(out_coord_offset[..., :3])
-            #     out_coord_offset[..., :3] = denormalize_lidar(out_coord_offset[..., :3], self.pc_range)
-            # out_coord = out_coord_offset
-            # if lvl == 0:
-            #     out_coord[..., 0:3] += init_ref_pts[..., 0:3]
-            # else:
-            #     out_coord[..., 0:3] += out_ref_pts[lvl-1][..., 0:3]
             anchor_init = init_ref_pts if lvl == 0 else out_ref_pts[lvl-1]
+            query_pos_lvl = query_pos_init if lvl == 0 else out_pos[lvl-1]
             # TODO: time interval
-            reg_out, cls_out = self.anchor_refinements[lvl](outs_dec[lvl], anchor_init, query_pos, 
+            reg_out, cls_out = self.anchor_refinements[lvl](outs_dec[lvl], anchor_init, query_pos_lvl, 
                                                             time_interval=None, return_cls=True)
             outputs_classes.append(cls_out)
             outputs_coords.append(reg_out)
