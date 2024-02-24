@@ -523,14 +523,15 @@ class StreamPETRHead(AnchorFreeHead):
         # out_ref_pts: sigmoided bbox predictions [num_dec_layers, B, Q, 3]
         # init_ref_pts: initial ref pts (in [0,1] range) [B, Q, 3]
         # NOTE: expecting all ref_pts to already be unnormalized
+        reg_branches = [self.anchor_refinements[i].reg_branch for i in range(self.num_decoder_layers)]
         outs_dec, out_ref_pts, init_ref_pts = self.transformer(
-            self.anchor_refinements, memory, tgt, query_pos, attn_mask, temp_memory=temp_memory, 
+            reg_branches, memory, tgt, query_pos, attn_mask, temp_memory=temp_memory, 
             temp_pos=temp_pos, reference_points = reference_points.clone(), lidar2img=data['lidar2img'], 
             extrinsics=data['extrinsics'], orig_spatial_shapes=orig_spatial_shapes, 
             flattened_spatial_shapes=flattened_spatial_shapes, 
             flattened_level_start_index=flattened_level_start_index, img_metas=img_metas)
         
-        
+
         outs_dec = torch.nan_to_num(outs_dec)
         outputs_classes = []
         outputs_coords = []

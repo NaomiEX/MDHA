@@ -318,7 +318,7 @@ class PETRTransformerDecoder(TransformerLayerSequence):
             query_out=torch.nan_to_num(query)
             
             # cls_pred = self.cls_branches[lid](query_out)
-            coord_offset = anchor_refinements[lid].reg_branch(query_out) # [B, Q, 10]
+            coord_offset = anchor_refinements[lid](query_out) # [B, Q, 10]
             if self.use_sigmoid_on_attn_out:
                 assert self.limit_3d_pts_to_pc_range, "sigmoid on attn output assumes output is limited to pc range"
                 if do_debug_process(self): print("PETR_TRANSFORMER: using sigmoid on attn out")
