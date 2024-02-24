@@ -17,7 +17,7 @@ optimizer = dict(
     lr=BS_LR_MAP.get(num_gpus*batch_size, 4e-4), # bs 8: 2e-4 || bs 16: 4e-4
     paramwise_cfg=dict(
         custom_keys={
-            'img_backbone': dict(lr_mult=0.5), # 0.25 only for Focal-PETR with R50-in1k pretrained weights
+            'img_backbone': dict(lr_mult=0.25), # 0.25 only for Focal-PETR with R50-in1k pretrained weights
         }),
     weight_decay=0.01)
 
