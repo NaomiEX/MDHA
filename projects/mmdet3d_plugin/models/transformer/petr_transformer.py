@@ -146,28 +146,20 @@ class PETRTemporalTransformer(BaseModule):
 
     def init_weights(self):
         # follow the official DETR to init parameters
-        for name, p in self.named_parameters():
-            if 'reg' in name or 'cls' in name: 
-                continue
-            if p.dim() > 1 and p.requires_grad:
-                nn.init.xavier_uniform_(p)
-
         for m in self.modules():
-            if m == self: continue
-            if hasattr(m, "init_weights"):
-                m.init_weights()
-
+            if hasattr(m, 'weight') and m.weight.dim() > 1:
+                xavier_init(m, distribution='uniform')
         # custom init for attention
         for i in range(self.decoder.num_layers):
             for attn in self.decoder.layers[i].attentions:
                 if isinstance(attn, CustomDeformAttn):
-                    # assert attn.is_init == False
+                    assert attn.is_init == False
                     attn.reset_parameters()
         
         self._is_init = True
 
 
-    def forward(self, memory, tgt, query_pos, attn_masks, pos_embed=None,
+    def forward(self, bbox_embed, memory, tgt, query_pos, attn_masks, pos_embed=None,
                 temp_memory=None, temp_pos=None, mask=None, reference_points=None, 
                 lidar2img=None, extrinsics=None, orig_spatial_shapes=None,
                 flattened_spatial_shapes=None, flattened_level_start_index=None,
@@ -179,6 +171,7 @@ class PETRTemporalTransformer(BaseModule):
         # out_ref_pts: [num_layers, B, Q, 3]
         # init_ref_pts: [B, Q, 3]
         outs_decoder = self.decoder(
+            bbox_embed=bbox_embed,
             query=tgt,
             key=memory if not self.two_stage else None,
             value=memory,
@@ -237,33 +230,33 @@ class PETRTransformerDecoder(TransformerLayerSequence):
         self.use_inv_sigmoid=use_inv_sigmoid
         self.use_sigmoid_on_attn_out=use_sigmoid_on_attn_out
 
-        cls_branch = []
-        for _ in range(num_reg_fcs):
-            cls_branch.append(Linear(self.embed_dims, self.embed_dims))
-            cls_branch.append(nn.LayerNorm(self.embed_dims))
-            cls_branch.append(nn.ReLU(inplace=True))
-        cls_branch.append(Linear(self.embed_dims, num_classes))
-        cls_branch = nn.Sequential(*cls_branch)
+        # cls_branch = []
+        # for _ in range(num_reg_fcs):
+        #     cls_branch.append(Linear(self.embed_dims, self.embed_dims))
+        #     cls_branch.append(nn.LayerNorm(self.embed_dims))
+        #     cls_branch.append(nn.ReLU(inplace=True))
+        # cls_branch.append(Linear(self.embed_dims, num_classes))
+        # cls_branch = nn.Sequential(*cls_branch)
 
-        reg_branch = []
-        for _ in range(num_reg_fcs):
-            reg_branch.append(Linear(self.embed_dims, self.embed_dims))
-            reg_branch.append(nn.ReLU())
-        reg_branch.append(Linear(self.embed_dims, anchor_dims))
-        reg_branch = nn.Sequential(*reg_branch)
+        # reg_branch = []
+        # for _ in range(num_reg_fcs):
+        #     reg_branch.append(Linear(self.embed_dims, self.embed_dims))
+        #     reg_branch.append(nn.ReLU())
+        # reg_branch.append(Linear(self.embed_dims, anchor_dims))
+        # reg_branch = nn.Sequential(*reg_branch)
 
-        self.cls_branches = nn.ModuleList(
-            [deepcopy(cls_branch) for _ in range(self.num_layers)])
-        self.reg_branches = nn.ModuleList(
-            [deepcopy(reg_branch) for _ in range(self.num_layers)])
+        # self.cls_branches = nn.ModuleList(
+        #     [deepcopy(cls_branch) for _ in range(self.num_layers)])
+        # self.reg_branches = nn.ModuleList(
+        #     [deepcopy(reg_branch) for _ in range(self.num_layers)])
 
-    def init_weights(self):
-        bias_init = bias_init_with_prob(0.01)
-        for m in self.cls_branches:
-            nn.init.constant_(m[-1].bias, bias_init)
+    # def init_weights(self):
+    #     bias_init = bias_init_with_prob(0.01)
+    #     for m in self.cls_branches:
+    #         nn.init.constant_(m[-1].bias, bias_init)
         
 
-    def forward(self, query, *args, reference_points=None, lidar2img=None, extrinsics=None, 
+    def forward(self, bbox_embed, query, *args, reference_points=None, lidar2img=None, extrinsics=None, 
                 orig_spatial_shapes=None, img_metas=None, num_cameras=6, **kwargs):
         if not self.return_intermediate:
             x = super().forward(query, *args, reference_points=None, **kwargs)
@@ -271,8 +264,8 @@ class PETRTransformerDecoder(TransformerLayerSequence):
                 x = self.post_norm(x)[None]
             return x
 
-        bbox_preds=[]
-        cls_preds=[]
+        intermediate = []
+        intermediate_reference_points = []
 
         cam_transformations = dict(lidar2img=lidar2img, lidar2cam=extrinsics)
 
@@ -284,6 +277,9 @@ class PETRTransformerDecoder(TransformerLayerSequence):
                     ref_pts_unnormalized = denormalize_lidar(reference_points.clone(), self.pc_range) # R:lidar space
             else:
                 ref_pts_unnormalized = reference_points
+
+            if lid == 0:
+                init_reference_point =ref_pts_unnormalized.clone()
             # [B, Q, 2]
             with torch.no_grad():
                 if self.ref_pts_mode == "single":
@@ -318,11 +314,11 @@ class PETRTransformerDecoder(TransformerLayerSequence):
                                 num_second_matches=num_second_matches, second_matches_valid_idxs=second_matches_valid_idxs,
                                 idx_with_second_match=idx_with_second_match,
                                 **kwargs)
-            query_out = self.post_norm(query) if self.post_norm else query
-            query_out=torch.nan_to_num(query_out)
+            # query_out = self.post_norm(query) if self.post_norm else query
+            query_out=torch.nan_to_num(query)
 
-            cls_pred = self.cls_branches[lid](query_out)
-            coord_offset = self.reg_branches[lid](query_out) # [B, Q, 10]
+            # cls_pred = self.cls_branches[lid](query_out)
+            coord_offset = bbox_embed[lid](query_out) # [B, Q, 10]
             if self.use_sigmoid_on_attn_out:
                 assert self.limit_3d_pts_to_pc_range, "sigmoid on attn output assumes output is limited to pc range"
                 if do_debug_process(self): print("PETR_TRANSFORMER: using sigmoid on attn out")
@@ -340,15 +336,19 @@ class PETRTransformerDecoder(TransformerLayerSequence):
                     prop_out_of_range = not_in_lidar_range(coord_pred[..., 0:3], self.pc_range).sum().item() / coord_pred.size(1)
                     print(f"coord prediction within decoder layer {lid} out of range: {prop_out_of_range}")
                 coord_pred[..., 0:3] = clamp_to_lidar_range(coord_pred[..., 0:3], self.pc_range)
-                # next_ref_pts = normalize_lidar(coord_pred[..., 0:3].detach().clone(), self.pc_range)
+                unnormalized_ref_pts = coord_pred[..., 0:3].detach().clone()
+                next_ref_pts = normalize_lidar(coord_pred[..., 0:3].detach().clone(), self.pc_range)
 
-            reference_points = coord_pred[..., 0:3].detach().clone()
+            intermediate_reference_points.append(unnormalized_ref_pts)
+            if self.post_norm is not None:
+                intermediate.append(self.post_norm(query))
+            else:
+                intermediate.append(query)
 
-            bbox_preds.append(coord_pred)
-            cls_preds.append(cls_pred)
-            # reference_points = next_ref_pts
+            reference_points = next_ref_pts
+            
 
-        return torch.stack(bbox_preds), torch.stack(cls_preds), query_out
+        return torch.stack(intermediate), torch.stack(intermediate_reference_points), init_reference_point
 
 @TRANSFORMER_LAYER.register_module()
 class PETRTemporalDecoderLayer(BaseModule):

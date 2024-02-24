@@ -166,6 +166,27 @@ class StreamPETRHead(AnchorFreeHead):
         self._init_layers()
         self.reset_memory()
 
+        cls_branch = []
+        for _ in range(self.num_reg_fcs):
+            cls_branch.append(Linear(self.embed_dims, self.embed_dims))
+            cls_branch.append(nn.LayerNorm(self.embed_dims))
+            cls_branch.append(nn.ReLU(inplace=True))
+        cls_branch.append(Linear(self.embed_dims, self.cls_out_channels))
+        fc_cls = nn.Sequential(*cls_branch)
+
+        reg_branch = []
+        for _ in range(self.num_reg_fcs):
+            reg_branch.append(Linear(self.embed_dims, self.embed_dims))
+            reg_branch.append(nn.ReLU())
+        reg_branch.append(Linear(self.embed_dims, self.code_size))
+        reg_branch = nn.Sequential(*reg_branch)
+
+        num_branches = self.num_decoder_layers
+        self.cls_branches = nn.ModuleList(
+            [deepcopy(fc_cls) for _ in range(num_branches)])
+        self.reg_branches = nn.ModuleList(
+            [deepcopy(reg_branch) for _ in range(num_branches)])
+
     def _init_layers(self):
         self.memory_embed = nn.Sequential(
                 nn.Linear(self.embed_dims, self.embed_dims),
@@ -206,10 +227,10 @@ class StreamPETRHead(AnchorFreeHead):
             self.pseudo_reference_points.weight.requires_grad = False
 
         self.transformer.init_weights()
-        # if self.loss_cls.use_sigmoid:
-        #     bias_init = bias_init_with_prob(0.01)
-        #     for m in self.cls_branches:
-        #         nn.init.constant_(m[-1].bias, bias_init)
+        if self.loss_cls.use_sigmoid:
+            bias_init = bias_init_with_prob(0.01)
+            for m in self.cls_branches:
+                nn.init.constant_(m[-1].bias, bias_init)
        
     def reset_memory(self):
         self.memory_embedding = None
@@ -499,7 +520,7 @@ class StreamPETRHead(AnchorFreeHead):
         # out_ref_pts: sigmoided bbox predictions [num_dec_layers, B, Q, 3]
         # init_ref_pts: initial ref pts (in [0,1] range) [B, Q, 3]
         # NOTE: expecting all ref_pts to already be unnormalized
-        all_bbox_preds, all_cls_scores, query_out = self.transformer(memory, tgt, query_pos, attn_mask,  
+        outs_dec, out_ref_pts, init_ref_pts = self.transformer(self.reg_branches, memory, tgt, query_pos, attn_mask,  
                                         temp_memory=temp_memory, temp_pos=temp_pos,
                                         reference_points = reference_points.clone(), lidar2img=data['lidar2img'],
                                         extrinsics=data['extrinsics'], orig_spatial_shapes=orig_spatial_shapes, 
@@ -507,8 +528,33 @@ class StreamPETRHead(AnchorFreeHead):
                                         flattened_level_start_index=flattened_level_start_index,
                                         img_metas=img_metas)
         
+        outs_dec = torch.nan_to_num(outs_dec)
+        outputs_classes = []
+        outputs_coords = []
+        for lvl in range(outs_dec.shape[0]):
+            outputs_class = self.cls_branches[lvl](outs_dec[lvl]) # [B, Q, num_classes]
+            out_coord_offset = self.reg_branches[lvl](outs_dec[lvl]) # [B, Q, 10]
+            if self.use_sigmoid_on_attn_out:
+                if self._iter == 0: print("DECODER: using sigmoid on attention out")
+                out_coord_offset[..., :3] = F.sigmoid(out_coord_offset[..., :3])
+                out_coord_offset[..., :3] = denormalize_lidar(out_coord_offset[..., :3], self.pc_range)
+            out_coord = out_coord_offset
+            if lvl == 0:
+                out_coord[..., 0:3] += init_ref_pts[..., 0:3]
+            else:
+                out_coord[..., 0:3] += out_ref_pts[lvl-1][..., 0:3]
+                if self.refine_all:
+                    out_coord[..., 3:] += outputs_coords[-1][..., 3:]
+            
+
+            outputs_classes.append(outputs_class)
+            outputs_coords.append(out_coord)
+
+        all_cls_scores = torch.stack(outputs_classes) # [n_dec_layers, B, Q, num_classes]
+        all_bbox_preds = torch.stack(outputs_coords) # [n_dec_layers, B, Q, 10]
+        
         # update the memory bank
-        self.post_update_memory(data, rec_ego_pose, all_cls_scores, all_bbox_preds, query_out, mask_dict)
+        self.post_update_memory(data, rec_ego_pose, all_cls_scores, all_bbox_preds, outs_dec[-1], mask_dict)
 
         if mask_dict and mask_dict['pad_size'] > 0:
             output_known_class = all_cls_scores[:, :, :mask_dict['pad_size'], :]
