@@ -50,7 +50,6 @@ class IQTransformerEncoder(TransformerLayerSequence):
                  position_range=[-61.2, -61.2, -10.0, 61.2, 61.2, 10.0], 
                  depth_pred_position=0, 
                  depth_net=None, 
-                 pred_ref_pts_depth=False, 
                  reference_point_generator=None, 
                  encode_ref_pts_depth_into_query_pos=False, 
                  ref_pts_depth_encoding_method=None,
@@ -142,7 +141,6 @@ class IQTransformerEncoder(TransformerLayerSequence):
                     nn.Linear(self.embed_dims, self.embed_dims),
                     nn.LayerNorm(self.embed_dims)
                 )
-        self.pred_ref_pts_depth=pred_ref_pts_depth
         self.depth_pred_position=depth_pred_position
         if depth_net is not None and self.depth_pred_position == 1:
             self.depth_net=build_plugin_layer(depth_net)[1]
@@ -171,26 +169,6 @@ class IQTransformerEncoder(TransformerLayerSequence):
             self.pos3d_encoding = MLN(self.embed_dims)
 
         self.anchor_refinement = build_plugin_layer(anchor_refinement)[1]
-        ## pred branches
-        # cls_branch = []
-        # for _ in range(2):
-        #     cls_branch.append(Linear(self.embed_dims, self.embed_dims))
-        #     cls_branch.append(nn.LayerNorm(self.embed_dims))
-        #     cls_branch.append(nn.ReLU(inplace=True))
-        # cls_branch.append(Linear(self.embed_dims, self.num_classes))
-        # fc_cls = nn.Sequential(*cls_branch)
-
-        # reg_branch = []
-        # for _ in range(2):
-        #     reg_branch.append(Linear(self.embed_dims, self.embed_dims))
-        #     reg_branch.append(nn.ReLU())
-        # reg_branch.append(Linear(self.embed_dims, self.code_size))
-        # reg_branch = nn.Sequential(*reg_branch)
-        # self.cls_branches = nn.ModuleList(
-        #     [copy.deepcopy(fc_cls) for _ in range(self.num_layers)])
-        # self.reg_branches = nn.ModuleList(
-        #     [copy.deepcopy(reg_branch) for _ in range(self.num_layers)])
-        
         if self.num_layers > 1:
             raise NotImplementedError("right now only using 1 encoder layer")
     
@@ -369,48 +347,18 @@ class IQTransformerEncoder(TransformerLayerSequence):
         # level=0
         out_coord, out_cls = self.anchor_refinement(query_out, output_proposals, pos, 
                                                     time_interval=None, return_cls=True)
-        # out_cls=self.cls_branches[level](query_out) # [B, p, num_classes]
-        # out_coord_offset = self.reg_branches[level](query_out) # [B, p, num_classes]
-        # if self.use_sigmoid_on_attn_out:
-        #     raise NotImplementedError()
-        #     if do_debug_process(self): print("ENCODER: using sigmoid on attention out")
-        #     out_coord_offset[..., :3] = F.sigmoid(out_coord_offset[..., :3])
-        #     out_coord_offset[..., :3] = denormalize_lidar(out_coord_offset[..., :3], self.pc_range)
-        # out_coord = out_coord_offset
-        # if self.use_inv_sigmoid:
-        #     if do_debug_process(self): print("using inverse sigmoid")
-        #     output_proposals = inverse_sigmoid(output_proposals)
-        # else:
-        #     if do_debug_process(self): print("NOT using inverse sigmoid")
-        #     if self.limit_3d_pts_to_pc_range:
-        #         output_proposals = denormalize_lidar(output_proposals, self.pc_range)
-        #         assert not_in_lidar_range(output_proposals, self.pc_range).sum() == 0
-            
-        # if level == 0:
-        #     assert out_coord[..., :3].shape == output_proposals.shape
-        #     out_coord[..., :3] += output_proposals[..., :3]
-        # else:
-        #     raise NotImplementedError()
         
-        # if self.use_inv_sigmoid:
-        #     out_coord[..., :3]=out_coord[..., :3].sigmoid()
-        #     if self.limit_3d_pts_to_pc_range:
-        #         out_coord[..., :3]=denormalize_lidar(out_coord[..., :3], self.pc_range)
-        #     out_coord=out_coord
-        # elif self.limit_3d_pts_to_pc_range:
-        #     out_coord = clamp_to_lidar_range(out_coord.clone(), self.pc_range)
-
         enc_pred_dict = {
             "cls_scores_enc": out_cls,
             "bbox_preds_enc": out_coord,
             "sparse_token_num": n_sparse_tokens,
             "src_mask_prediction": mask_pred
         }
-        if self.pred_ref_pts_depth:
+        if depth_pred is not None:
             # reference_points_2d_cam: [B, h0*N*w0+..., 2] (x,y) is normalized in level range [0,1]
             # depth_pred: [B, h0*N*w0+..., 1] is unnormalized in range [depth_start, depth_max]
             enc_pred_dict.update({
-                "ref_pts_2point5d": torch.cat([reference_points_2d_cam_orig, depth_pred], -1),
+                "ref_pts_2point5d_pred": torch.cat([reference_points_2d_cam_orig, depth_pred], -1),
             })
         
         return enc_pred_dict, output

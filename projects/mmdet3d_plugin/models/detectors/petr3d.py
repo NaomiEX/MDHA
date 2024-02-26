@@ -42,7 +42,7 @@ class Petr3D(MVXTwoStageDetector):
                  ## depth
                  depth_net=None,
                  depth_pred_position=0,
-                 calc_depth_pred_loss=False,
+                 calc_depth_pred_loss=True,
                  ## debug
                  debug_args=None,
                  ):
@@ -56,7 +56,7 @@ class Petr3D(MVXTwoStageDetector):
             encoder['depth_pred_position']=depth_pred_position
             encoder['pred_ref_pts_depth']=depth_net is not None
             
-            if depth_net is not None and depth_pred_position == 1:
+            if depth_net is not None and depth_pred_position == DEPTH_PRED_IN_ENCODER:
                 encoder['depth_net'] = depth_net
         if pts_bbox_head is not None:
             pts_bbox_head['pc_range'] = pc_range
@@ -100,7 +100,7 @@ class Petr3D(MVXTwoStageDetector):
 
         self.pc_range=nn.Parameter(torch.tensor(pc_range), requires_grad=False)
         self.depth_pred_position=depth_pred_position
-        if depth_net is not None and depth_pred_position==0:
+        if depth_net is not None and depth_pred_position==DEPTH_PRED_BEFORE_ENCODER:
             self.depth_net=build_plugin_layer(depth_net)[1]
         else:
             self.depth_net=None
@@ -326,7 +326,7 @@ class Petr3D(MVXTwoStageDetector):
         #   [B, 6, 256, H_1, W_1],
         #   [B, 6, 256, H_2, W_2],
         #   [B, 6, 256, H_3, W_3]
-        if self.depth_net is not None and self.depth_pred_position == 0:
+        if self.depth_net is not None and self.depth_pred_position == DEPTH_PRED_BEFORE_ENCODER:
             # [B, h0*N*w0+..., 1]
             depth_pred = self.depth_net(data['img_feats'], return_flattened=True)
         else:
@@ -377,9 +377,9 @@ class Petr3D(MVXTwoStageDetector):
                 losses = self.pts_bbox_head.loss(*loss_inputs)
             
             if self.calc_depth_pred_loss:
-                if self.depth_pred_position == 0:
+                if self.depth_pred_position == DEPTH_PRED_BEFORE_ENCODER:
                     depthnet = self.depth_net
-                elif self.depth_pred_position == 1:
+                elif self.depth_pred_position == DEPTH_PRED_IN_ENCODER:
                     depthnet = self.encoder.depth_net
                 losses_depth = depthnet.loss(gt_bboxes_3d, enc_pred_dict, 
                                              data['lidar2img'], data['extrinsics'], spatial_shapes)
