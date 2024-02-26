@@ -2,6 +2,8 @@ backbone_norm_cfg = dict(type='LN', requires_grad=True)
 plugin=True
 plugin_dir='projects/mmdet3d_plugin/'
 
+revise_keys = [('backbone', 'img_backbone')]
+
 # If point cloud range is changed, the models should also change their point
 # cloud range accordingly
 point_cloud_range = [-51.2, -51.2, -5.0, 51.2, 51.2, 3.0]
@@ -421,3 +423,5 @@ data = dict(
 
 # evaluation = dict(interval=num_iters_per_epoch*num_epochs, pipeline=test_pipeline)
 evaluation = dict(pipeline=test_pipeline)
+
+load_from ="ckpts/cascade_mask_rcnn_r101_fpn_1x_nuim_20201024_134804-45215b1e.pth"
