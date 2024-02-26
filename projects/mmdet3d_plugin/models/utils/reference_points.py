@@ -7,6 +7,7 @@ from mmcv.cnn.bricks.registry import PLUGIN_LAYERS
 from .projections import Projections
 from projects.mmdet3d_plugin.models.utils.misc import MLN
 from ..utils.misc import flatten_mlvl
+from ..utils.debug import *
 
 @PLUGIN_LAYERS.register_module()
 class ReferencePoints(BaseModule):
@@ -84,6 +85,8 @@ class ReferencePoints(BaseModule):
                     assert list(coord_depths_all_cams.shape) == [num_cams, h_i, w_i]
                 else:
                     raise NotImplementedError()
+            elif do_debug_process(self): 
+                print("REFERENCE POINTS: USING LEARNABLE DEPTH PTS")
             ##############################
 
             scale = grid.new_tensor([w_i, h_i])

@@ -54,6 +54,12 @@ class PETRFormatBundle3D(DefaultFormatBundle):
         if 'cam_order' in results:
             cam_order = [self.CAM_MAPPING[cam] for cam in results['cam_order']]
             results['cam_order'] = DC(to_tensor(np.array(cam_order)))
+
+        if 'focal_intrinsic' in results:
+            results['focal_intrinsic'] = np.float32(
+                np.stack(results['focal_intrinsic'])
+            )
+            results['focal'] = results['focal_intrinsic'][..., 0, 0]
         # Format 3D data
         if 'points' in results:
             assert isinstance(results['points'], BasePoints)

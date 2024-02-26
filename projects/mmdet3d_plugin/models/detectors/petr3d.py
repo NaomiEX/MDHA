@@ -54,7 +54,6 @@ class Petr3D(MVXTwoStageDetector):
         if encoder is not None:
             encoder['pc_range']=pc_range
             encoder['depth_pred_position']=depth_pred_position
-            encoder['pred_ref_pts_depth']=depth_net is not None
             
             if depth_net is not None and depth_pred_position == DEPTH_PRED_IN_ENCODER:
                 encoder['depth_net'] = depth_net
@@ -104,9 +103,8 @@ class Petr3D(MVXTwoStageDetector):
             self.depth_net=build_plugin_layer(depth_net)[1]
         else:
             self.depth_net=None
-        self.calc_depth_pred_loss=calc_depth_pred_loss
-        if calc_depth_pred_loss: 
-            assert self.depth_net is not None or (self.use_encoder and self.encoder.depth_net is not None)
+        self.calc_depth_pred_loss= calc_depth_pred_loss and \
+            (self.depth_net is not None or (self.use_encoder and self.encoder.depth_net is not None))
 
         self.cached_locations=None
         
@@ -328,7 +326,7 @@ class Petr3D(MVXTwoStageDetector):
         #   [B, 6, 256, H_3, W_3]
         if self.depth_net is not None and self.depth_pred_position == DEPTH_PRED_BEFORE_ENCODER:
             # [B, h0*N*w0+..., 1]
-            depth_pred = self.depth_net(data['img_feats'], return_flattened=True)
+            depth_pred = self.depth_net(data['img_feats'], focal=data['focal'], return_flattened=True)
         else:
             depth_pred=None
 
@@ -376,7 +374,7 @@ class Petr3D(MVXTwoStageDetector):
                 loss_inputs = [gt_bboxes_3d, gt_labels_3d, outs]
                 losses = self.pts_bbox_head.loss(*loss_inputs)
             
-            if self.calc_depth_pred_loss:
+            if self.calc_depth_pred_loss and (self.depth_net is not None or self.encoder.depth_net is not None):
                 if self.depth_pred_position == DEPTH_PRED_BEFORE_ENCODER:
                     depthnet = self.depth_net
                 elif self.depth_pred_position == DEPTH_PRED_IN_ENCODER:

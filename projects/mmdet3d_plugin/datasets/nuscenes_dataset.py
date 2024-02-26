@@ -10,6 +10,7 @@
 #  Modified by Shihao Wang
 # ------------------------------------------------------------------------
 import numpy as np
+import copy
 from mmdet.datasets import DATASETS
 from mmdet3d.datasets import NuScenesDataset
 from mmdet.datasets import DATASETS
@@ -196,6 +197,7 @@ class CustomNuScenesDataset(NuScenesDataset):
             extrinsics = []
             img_timestamp = []
             cam_order = []
+            focal_intrinsics=[]
             for cam_type, cam_info in info['cams'].items():
                 img_timestamp.append(cam_info['timestamp'] / 1e6)
                 image_paths.append(cam_info['data_path'])
@@ -206,12 +208,14 @@ class CustomNuScenesDataset(NuScenesDataset):
                 lidar2cam_rt = invert_matrix_egopose_numpy(cam2lidar_rt)
 
                 intrinsic = cam_info['cam_intrinsic']
+                focal_intrinsic = copy.deepcopy(cam_info['cam_intrinsic'])
                 viewpad = np.eye(4)
                 viewpad[:intrinsic.shape[0], :intrinsic.shape[1]] = intrinsic
                 lidar2img_rt = (viewpad @ lidar2cam_rt)
                 intrinsics.append(viewpad)
                 extrinsics.append(lidar2cam_rt)
                 lidar2img_rts.append(lidar2img_rt)
+                focal_intrinsics.append(focal_intrinsic)
                 
                 cam_order.append(cam_type)
 
@@ -226,6 +230,7 @@ class CustomNuScenesDataset(NuScenesDataset):
                     img_filename=image_paths,
                     lidar2img=lidar2img_rts,
                     intrinsics=intrinsics,
+                    focal_intrinsic=focal_intrinsics,
                     extrinsics=extrinsics,
                     prev_exists=prev_exists,
                     cam_order=cam_order,

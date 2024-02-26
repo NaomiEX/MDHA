@@ -17,7 +17,7 @@ class DepthNet(BaseModule):
     def __init__(self, in_channels, depth_net_type="conv", depth_start=1.0, depth_max=61.2,
                  depth_pred_position=0, mlvl_feats_format=None, n_levels=4, loss_depth=None,
                  depth_weight_bound=False, depth_weight_limit=0.01, use_focal=True, equal_focal=100,
-                 single_target=False, depth_loss_avg_factor_multiplier=4.0,
+                 single_target=False,
                  **kwargs):
         super().__init__()
         self.in_channels=in_channels
@@ -31,7 +31,6 @@ class DepthNet(BaseModule):
         self.single_target=single_target
         self.n_levels=n_levels
         self.use_focal=use_focal
-        self.depth_loss_avg_factor_multiplier=depth_loss_avg_factor_multiplier
         if use_focal:
             self.equal_focal=equal_focal
         mid_channels=kwargs.get("mid_channels",self.in_channels)
@@ -196,7 +195,7 @@ class DepthNet(BaseModule):
                 full_target_counts = target_counts.new_zeros([global_2p5d_pts_norm.size(0)])
                 full_target_counts[selected_targets] = target_counts
             else:
-                full_target_counts=global_2p5d_pts_norm.size(0) # n_matches
+                full_target_counts=global_2p5d_pts_norm.size(0) * global_2p5d_pts_norm.size(1) # n_matches * n_levels
             
             if self.div_depth_loss_by_target_count:
                 depth_weights = depth_weights / full_target_counts[all_targets]
@@ -247,8 +246,6 @@ class DepthNet(BaseModule):
         # ! ENSURE BOTH depth_targets AND ref_pts_depth_pred ARE UNNORMALIZED
 
         avg_factor = num_total_valid_depths 
-        if not self.single_target: 
-            avg_factor *= self.depth_loss_avg_factor_multiplier
         loss_depth = self.loss_depth(
             ref_pts_depth_pred, depth_targets, depth_weights, avg_factor=avg_factor
         )

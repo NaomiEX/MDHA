@@ -21,7 +21,7 @@ num_levels=len(strides)
 
 queue_length = 1
 num_frame_losses = 1
-collect_keys=['lidar2img', 'intrinsics', 'extrinsics', 'timestamp', 'ego_pose', 'ego_pose_inv']
+collect_keys=['lidar2img', 'intrinsics', 'extrinsics', 'timestamp', 'ego_pose', 'ego_pose_inv', 'focal']
 input_modality = dict(
     use_lidar=False,
     use_camera=True,
@@ -131,6 +131,7 @@ depthnet = dict(
     depth_weight_limit=0.01,
     use_focal=False,
     single_target=False,
+    sigmoid_out=True,
 )
 
 encoder_anchor_refinement = dict(
@@ -158,8 +159,6 @@ encoder = dict(
     position_range=[-61.2, -61.2, -10.0, 61.2, 61.2, 10.0],
 
     ## modules
-    depth_net=depthnet,
-    depth_pred_position=depth_pred_pos,
 
     anchor_refinement=encoder_anchor_refinement,
     pos_embed3d= position_embedding_3d if pos_embed3d == "encoder" else None,
@@ -292,6 +291,8 @@ model = dict(
     strides=strides,
     use_grid_mask=True,
     ##new##
+    depth_net=depthnet,
+    depth_pred_position=depth_pred_pos,
     mlvl_feats_format=mlvl_feats_format,
     encoder=encoder if modules['encoder'] else None,
     num_cameras=6,

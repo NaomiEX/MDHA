@@ -162,6 +162,7 @@ class ResizeCropFlipRotImage():
 
             new_imgs.append(np.array(img).astype(np.float32))
             results['intrinsics'][i][:3, :3] = ida_mat @ results['intrinsics'][i][:3, :3]
+            results['focal_intrinsic'][i][:3, :3] *= resize
         results['gt_bboxes'] = new_gt_bboxes
         results['centers2d'] = new_centers2d
         results['gt_labels'] = new_gt_labels
