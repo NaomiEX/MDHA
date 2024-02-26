@@ -19,7 +19,7 @@ dec_attn_num_points=24
 embed_dims=256
 strides=[4, 8, 16, 32]
 num_levels=len(strides)
-update_pos=True
+update_pos=False
 
 queue_length = 1
 num_frame_losses = 1

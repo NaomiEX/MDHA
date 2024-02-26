@@ -128,11 +128,11 @@ depthnet = dict(
     depth_pred_position=depth_pred_pos,
     mlvl_feats_format=mlvl_feats_format,
     n_levels=len(strides),
-    loss_depth = dict(type='L1Loss', loss_weight=0.3),
+    loss_depth = dict(type='L1Loss', loss_weight=0.01),
     depth_weight_bound=True,
     depth_weight_limit=0.01,
     use_focal=False,
-    single_target=True,
+    single_target=False,
     sigmoid_out=True,
 )
 
