@@ -315,7 +315,7 @@ class IQTransformerEncoder(TransformerLayerSequence):
         
         if self.encode_ref_pts_depth_into_query_pos:
             if do_debug_process(self): print("encoding depth into query pos")
-            assert ((ref_pts_depth_norm >= 0.0) & (ref_pts_depth_norm <= 1.0)).all()
+            # assert ((ref_pts_depth_norm >= 0.0) & (ref_pts_depth_norm <= 1.0)).all() # NOTE: from depthnet, depths can be out of range
             ref_pts_depth_norm_emb = pos2posemb1d(ref_pts_depth_norm) # [B, h0*N*w0+..., 256]
             if self.ref_pts_depth_encoding_method == "mln":
                 if do_debug_process(self): print("using mln method of encoding depth into query pos")

@@ -27,6 +27,7 @@ class DepthNet(BaseModule):
         self.depth_net_type = depth_net_type.lower()
         self.sigmoid_out = kwargs.get("sigmoid_out", False)
         self.depth_start=depth_start
+        self.depth_max=depth_max
         self.depth_range=depth_max - depth_start
         self.single_target=single_target
         self.n_levels=n_levels
@@ -46,6 +47,7 @@ class DepthNet(BaseModule):
 
 
         if self.sigmoid_out:
+            assert self.use_focal is False
             depth_branch.append(nn.Sigmoid())
         
         net = nn.Sequential(*depth_branch)
@@ -76,6 +78,7 @@ class DepthNet(BaseModule):
                 focal=None, # [B, N]
                 return_flattened=True,
                 ):
+        focal=focal.reshape(-1)
         all_pred_depths = []
         if self.depth_pred_position == DEPTH_PRED_BEFORE_ENCODER:
             for lvl, lvl_feat in enumerate(x[:self.n_levels]):
@@ -90,10 +93,8 @@ class DepthNet(BaseModule):
                     # unnormalize output
                     pred_depths = pred_depths * self.depth_range + self.depth_start
                 elif self.use_focal:
-                    focal = focal.reshape(-1) # [B*N]
-                    pred_depths = pred_depths.exp() * focal / self.equal_focal
-                    all_pred_depths.append(pred_depths)
-
+                    pred_depths = pred_depths.exp() * focal[..., None, None, None] / self.equal_focal
+                    pred_depths = torch.clip(pred_depths.clone(), min=0.0, max=self.depth_max)
                 if return_flattened:
                     # [B, N, 1, H_i, W_i] -> [B, H_i, N, W_i, 1] -> [B, H_i*N*W_i, 1]
                     pred_depths = pred_depths.unflatten(0,(B,N)).permute(0,3,1,4,2).flatten(1, 3)
@@ -115,6 +116,7 @@ class DepthNet(BaseModule):
                            num_cameras=6):
         if gt_bboxs_3d.numel() == 0:
             # gt_bboxs_3d: [0, 9]
+            all_depth_preds = ref_pts_2point5d_pred.new_tensor([])
             all_target_depths=gt_bboxs_3d.new_tensor([]) # shape: [0]
             all_weights=gt_bboxs_3d.new_tensor([])
             num_total_depth_pos=0
@@ -136,10 +138,11 @@ class DepthNet(BaseModule):
             global_2p5d_pts_norm = project_to_matching_2point5d_cam_points(gt_bbox_centers_3d, cam_transformations, 
                                                                         orig_spatial_shapes, num_cameras=num_cameras)
             if global_2p5d_pts_norm.size(0) == 0: # no matches
+                all_depth_preds = ref_pts_2point5d_pred.new_tensor([])
                 all_target_depths=gt_bboxs_3d.new_tensor([]) # shape: [0]
                 all_weights=gt_bboxs_3d.new_tensor([])
                 num_total_depth_pos=0
-                return all_target_depths, all_weights, num_total_depth_pos
+                return all_depth_preds, all_target_depths, all_weights, num_total_depth_pos
             flattened_spatial_shapes = orig_spatial_shapes.clone()
             flattened_spatial_shapes[:, 1] = flattened_spatial_shapes[:, 1] * num_cameras
             flattened_spatial_shapes_xy = torch.stack([flattened_spatial_shapes[..., 1], flattened_spatial_shapes[..., 0]], -1)
@@ -183,12 +186,13 @@ class DepthNet(BaseModule):
 
                 all_target_depths.append(target_depths)
 
+            all_depth_preds = ref_pts_2point5d_pred[..., 2]
             all_targets = torch.cat(all_targets, 0)
             all_dists = torch.cat(all_dists, 0)
             all_weights = torch.cat(all_weights, 0)
             all_target_depths = torch.cat(all_target_depths, 0)
 
-            assert all_target_depths.shape == ref_pts_2point5d_pred[..., 2].shape
+            assert all_target_depths.shape == all_depth_preds.shape
 
             if self.div_depth_loss_by_target_count:
                 selected_targets, target_counts = torch.unique(all_targets, return_counts=True,sorted=True)
@@ -205,7 +209,7 @@ class DepthNet(BaseModule):
                 num_total_depth_pos = full_target_counts
             else:
                 num_total_depth_pos = ref_pts_2point5d_pred.numel()
-        return all_target_depths, all_weights, num_total_depth_pos
+        return all_depth_preds, all_target_depths, all_weights, num_total_depth_pos
     
     def get_targets(self,
                     gt_bboxes_list,
@@ -213,12 +217,12 @@ class DepthNet(BaseModule):
                     lidar2cam_list=None,
                     orig_spatial_shapes_list=None,
                     ref_pts_2point5d_pred_list=None):
-        depth_targets_list, depth_weights_list, num_valid_depths_list = multi_apply(
+        all_depth_preds_list, depth_targets_list, depth_weights_list, num_valid_depths_list = multi_apply(
             self._get_target_single, gt_bboxes_list, lidar2img_list, lidar2cam_list,
             orig_spatial_shapes_list, ref_pts_2point5d_pred_list
         )
         num_total_valid_depths = sum(num_valid_depths_list)
-        return depth_targets_list, depth_weights_list, num_total_valid_depths
+        return all_depth_preds_list, depth_targets_list, depth_weights_list, num_total_valid_depths
     
     def loss_single(self,
                     gt_bboxes_list,
@@ -235,19 +239,27 @@ class DepthNet(BaseModule):
         orig_spatial_shapes_list = [orig_spatial_shapes for _ in range(num_imgs)]
         ref_pts_2point5d_pred_list = [ref_pts_2point5d_pred[i] for i in range(num_imgs)]
 
-        depth_targets_list, depth_weights_list, num_valid_depths=\
+        depth_pred_list, depth_targets_list, depth_weights_list, num_valid_depths=\
             self.get_targets(gt_bboxes_list, lidar2img_list, lidar2cam_list, 
                              orig_spatial_shapes_list, ref_pts_2point5d_pred_list)
+        depth_preds = torch.cat(depth_pred_list, 0)
         depth_targets = torch.cat(depth_targets_list, 0)
         depth_weights = torch.cat(depth_weights_list, 0)
         num_total_valid_depths = gt_bboxes_list[0].new_tensor([num_valid_depths])
         num_total_valid_depths = torch.clamp(reduce_mean(num_total_valid_depths), min=1).item()
-        ref_pts_depth_pred = torch.cat([ref_pts[..., 2] for ref_pts in ref_pts_2point5d_pred_list],0)
+        # ref_pts_depth_pred = torch.cat([ref_pts[..., 2] for ref_pts in ref_pts_2point5d_pred_list],0)
         # ! ENSURE BOTH depth_targets AND ref_pts_depth_pred ARE UNNORMALIZED
 
-        avg_factor = num_total_valid_depths 
+        if depth_preds.size(0) != depth_targets.size(0):
+            out = dict(depth_preds=depth_preds, depth_targets=depth_targets)
+            with open("./experiments/depth_coords_pred_target_unequal.pkl", "wb") as f:
+                pickle.dump(out, f)
+            raise Exception(f"depth_preds.size(0) != depth_targets.size(0)\ndepth_preds: {depth_preds}"
+                            f"\ndepth_targets: {depth_targets}")
+
+        avg_factor = num_total_valid_depths
         loss_depth = self.loss_depth(
-            ref_pts_depth_pred, depth_targets, depth_weights, avg_factor=avg_factor
+            depth_preds, depth_targets, depth_weights, avg_factor=avg_factor
         )
         if loss_depth == 0.0:
             print(f"WARNING: LOSS DEPTH IS 0")
