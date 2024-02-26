@@ -5,7 +5,7 @@ from shapely.ops import nearest_points
 from .lidar_utils import clamp_to_lidar_range, not_in_lidar_range
 
 class Projections:
-    IMG_SIZE = [704, 256] # [W, H]
+    IMG_SIZE = [1408, 512] # [W, H]
     # IMG_SIZE_IN_BOUNDS = [703, 255]
     IMG_CENTER_COORDS=[IMG_SIZE[0]//2, IMG_SIZE[1]//2]
     # # NOTE: IT'S IMPORTANT THAT THIS ORDERING MATCHES THE ORDERING OF THE NUSCENES_CONVERTER

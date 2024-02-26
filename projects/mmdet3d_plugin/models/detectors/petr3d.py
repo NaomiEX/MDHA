@@ -14,6 +14,7 @@ from projects.mmdet3d_plugin.models.utils.misc import locations
 from projects.mmdet3d_plugin.models.utils.positional_encoding import posemb2d_from_spatial_shapes
 from projects.mmdet3d_plugin.constants import *
 from ..utils.lidar_utils import normalize_lidar
+from ..utils.projections import Projections
 from ..utils.debug import *
 
 @DETECTORS.register_module()
@@ -423,6 +424,10 @@ class Petr3D(MVXTwoStageDetector):
                       **data):
         if do_debug_process(self):
             print(f"img shape: {data['img'].shape}")
+            assert Projections.IMG_SIZE[0] == data['img'].size(-1), \
+                f"Projection's expected input W to be {Projections.IMG_SIZE[0]} but got: {data['img'].size(-1)}"
+            assert Projections.IMG_SIZE[1] == data['img'].size(-2), \
+                f"Projection's expected input H to be {Projections.IMG_SIZE[1]} but got {data['img'].size(-2)}"
         if self.test_flag: #for interval evaluation
             self.pts_bbox_head.reset_memory()
             self.test_flag = False
