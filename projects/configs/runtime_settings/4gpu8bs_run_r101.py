@@ -14,7 +14,7 @@ BS_LR_MAP = {
 }
 optimizer = dict(
     type='AdamW', 
-    lr=BS_LR_MAP.get(num_gpus*batch_size, 4e-4), # bs 8: 2e-4 || bs 16: 4e-4
+    lr=8e-5, # bs 8: 2e-4 || bs 16: 4e-4
     paramwise_cfg=dict(
         custom_keys={
             'img_backbone': dict(lr_mult=0.1), # 0.25 only for Focal-PETR with R50-in1k pretrained weights
@@ -33,7 +33,7 @@ lr_config = dict(
 
 evaluation_interval=num_iters_per_epoch*num_epochs
 find_unused_parameters=False #### when use checkpoint, find_unused_parameters must be False
-checkpoint_config = dict(interval=num_iters_per_epoch, max_keep_ckpts=8)
+checkpoint_config = dict(interval=num_iters_per_epoch, max_keep_ckpts=12)
 runner = dict(
     type='IterBasedRunner', max_iters=num_epochs * num_iters_per_epoch)
 load_from ="ckpt/cascade_mask_rcnn_r101_fpn_1x_nuim_20201024_134804-45215b1e.pth"
