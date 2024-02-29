@@ -17,6 +17,7 @@ projections_cpu.py
 reference_points_test.py
 metrics_comp.ipynb
 test/
+viz/
 .vscode/
 # Byte-compiled / optimized / DLL files
 __pycache__/
