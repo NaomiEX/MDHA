@@ -4,4 +4,4 @@ _base_ = [
     "../runtime_settings/debug.py"
 ]
 
-debug_modules=['Petr3D', 'CircularDeformAttn', 'Projections', 'IQTransformerEncoder']
+debug_modules=['Petr3D', 'CustomDeformAttn', 'Projections', 'IQTransformerEncoder']
