@@ -12,7 +12,6 @@ from mmcv.cnn.bricks.plugin import build_plugin_layer
 from mmdet.core import (build_assigner, build_sampler, multi_apply,
                         reduce_mean)
 from mmdet.models import HEADS, build_loss
-from mmdet.models.utils.transformer import inverse_sigmoid
 from projects.mmdet3d_plugin.models.utils.positional_encoding import pos2posemb3d, pos2posemb1d, nerf_positional_encoding, posemb2d
 from projects.mmdet3d_plugin.models.utils.misc import MLN, SELayer_Linear
 from projects.mmdet3d_plugin.core.bbox.util import normalize_bbox, clamp_to_rot_range
@@ -23,7 +22,7 @@ from ..utils.lidar_utils import normalize_lidar, denormalize_lidar, clamp_to_lid
 from ..utils.misc import flatten_mlvl, groupby_agg_mean
 from ..utils.debug import *
 from ..utils.anchor_refine import AnchorRefinement
-from ..detectors.depthnet import DepthNet
+from ..utils.positional_encoding import pos2posemb3d
 
 @TRANSFORMER_LAYER_SEQUENCE.register_module()
 class IQTransformerEncoder(TransformerLayerSequence):
@@ -41,6 +40,7 @@ class IQTransformerEncoder(TransformerLayerSequence):
                  num_classes=10, 
                  limit_3d_pts_to_pc_range=False,
                  anchor_refinement=None,
+                 use_anchor_pos=False,
                  ## sparsification
                  mask_predictor=None,
                  sparse_rho=1.0, 
@@ -83,6 +83,14 @@ class IQTransformerEncoder(TransformerLayerSequence):
         self.sync_cls_avg_factor = sync_cls_avg_factor
 
         super(IQTransformerEncoder, self).__init__(*args, **kwargs)
+
+        self.use_anchor_pos=use_anchor_pos
+        if use_anchor_pos:
+            self.anchor_embedding=nn.Sequential(
+                nn.Linear(self.embed_dims*3//2, self.embed_dims),
+                nn.ReLU(),
+                nn.Linear(self.embed_dims, self.embed_dims),
+            )
 
         self.limit_3d_pts_to_pc_range=limit_3d_pts_to_pc_range
         self.pc_range = nn.Parameter(torch.tensor(pc_range), requires_grad=False)
@@ -313,7 +321,10 @@ class IQTransformerEncoder(TransformerLayerSequence):
         else:
             raise NotImplementedError()
         
-        if self.encode_ref_pts_depth_into_query_pos:
+        if self.use_anchor_pos:
+            pos += self.anchor_embedding(pos2posemb3d(output_proposals))
+            
+        elif self.encode_ref_pts_depth_into_query_pos:
             if do_debug_process(self): print("encoding depth into query pos")
             # assert ((ref_pts_depth_norm >= 0.0) & (ref_pts_depth_norm <= 1.0)).all() # NOTE: from depthnet, depths can be out of range
             ref_pts_depth_norm_emb = pos2posemb1d(ref_pts_depth_norm) # [B, h0*N*w0+..., 256]
