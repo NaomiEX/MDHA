@@ -55,6 +55,9 @@ class ReferencePoints(BaseModule):
             self.coords_depth = None
         
         self.img_size = [Projections.IMG_SIZE[1], Projections.IMG_SIZE[0]] # [H, W]
+
+        self.cached_ref_pts_2d_norm = None
+        self.cached_ref_pts_2p5d_unnorm = None
         
     def set_coord_depths(self, depths, n_tokens=None, top_rho_inds=None):
         assert self.coords_depth_type == "learnable"
@@ -66,12 +69,21 @@ class ReferencePoints(BaseModule):
     
     
     def get_enc_out_proposals_and_ref_pts(self, batch_size, spatial_shapes, device, num_cams=6,
-                                          ret_coord_groups=False,
                                           ):
         assert self.coords_depth is not None 
+
+        if self.cached_ref_pts_2d_norm is not None and self.cached_ref_pts_2p5d_unnorm is not None:
+            # NOTE: assumes spatial shapes are uniform across all inputs
+            all_ref_pts_2d_norm = self.cached_ref_pts_2d_norm.clone()
+            all_ref_pts_2p5d_unnorm = self.cached_ref_pts_2p5d_unnorm.clone()
+            if self.coords_depth_type == "learnable":
+                all_ref_pts_2p5d_unnorm = torch.cat([
+                    all_ref_pts_2p5d_unnorm, self.coords_depth
+                ], -1)
+            return [all_ref_pts_2d_norm, all_ref_pts_2p5d_unnorm]
+
         all_ref_pts_2d_norm = []
         all_ref_pts_2p5d_unnorm = []
-        all_coord_groups = []
 
         for lvl, (h_i, w_i) in enumerate(spatial_shapes):
             grid_y, grid_x = torch.meshgrid(torch.linspace(0, h_i-1, h_i, dtype=torch.float32, device=device),
@@ -120,9 +132,10 @@ class ReferencePoints(BaseModule):
             all_ref_pts_2p5d_unnorm = torch.cat([all_ref_pts_2p5d_unnorm, self.coords_depth], -1) # [B, h0*N*w0+..., 3]
         
         all_ref_pts_2d_norm = flatten_mlvl(all_ref_pts_2d_norm, spatial_shapes, self.mlvl_feats_format)
-        out = [all_ref_pts_2d_norm, all_ref_pts_2p5d_unnorm]
 
-        if ret_coord_groups:
-            out += [all_coord_groups]
+        ## cache ref points
+        self.cached_ref_pts_2d_norm = all_ref_pts_2d_norm.detach().clone()
+        self.cached_ref_pts_2p5d_unnorm = all_ref_pts_2p5d_unnorm.detach().clone() if self.coords_depth_type == "fixed" \
+                                          else all_ref_pts_2p5d_unnorm.detach().clone()[..., :2]
 
-        return out
+        return all_ref_pts_2d_norm, all_ref_pts_2p5d_unnorm
