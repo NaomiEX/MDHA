@@ -74,6 +74,7 @@ class ReferencePoints(BaseModule):
 
         if self.cached_ref_pts_2d_norm is not None and self.cached_ref_pts_2p5d_unnorm is not None:
             # NOTE: assumes spatial shapes are uniform across all inputs
+            if do_debug_process(self): print("USING CACHE IN REF PTS")
             all_ref_pts_2d_norm = self.cached_ref_pts_2d_norm.clone()
             all_ref_pts_2p5d_unnorm = self.cached_ref_pts_2p5d_unnorm.clone()
             if self.coords_depth_type == "learnable":
