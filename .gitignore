@@ -4,6 +4,8 @@ mmdetection3d/
 work_dirs/
 *nuscenes*.ipynb
 *playground*.ipynb
+viz.ipynb
+tools/viz_utils.py
 *playground*.py
 correctness_check.ipynb
 correctness_check copy.ipynb
