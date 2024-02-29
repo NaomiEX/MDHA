@@ -245,7 +245,7 @@ class Petr3D(MVXTwoStageDetector):
             memory=out_memory
         else:
             decoder_inps = dict()
-            memory = kwargs['data']['img_feats_flatten']
+            memory = kwargs['img_feats_flatten']
         # reference_points_dec_init: [B, Q, 3] in [0,1] range normalized R range
         reference_points_dec_init = decoder_inps.get("reference_points_dec_init")
         query_dec_init = decoder_inps.get("query_dec_init")
@@ -366,6 +366,8 @@ class Petr3D(MVXTwoStageDetector):
                                     flattened_spatial_shapes=flattened_spatial_shapes,
                                     flattened_level_start_index=flattened_level_start_index, 
                                     dn_known_bboxs=gt_bboxes_3d, dn_known_labels=gt_labels_3d,
+                                    ## the following two args are only for no-encoder cfg
+                                    locations_flatten=locations_flattened, pos=pos_flatten,
                                     **data)
         
         if return_losses:
@@ -502,6 +504,8 @@ class Petr3D(MVXTwoStageDetector):
                                     out_memory=out_memory, orig_spatial_shapes=spatial_shapes,
                                     flattened_spatial_shapes=flattened_spatial_shapes,
                                     flattened_level_start_index=flattened_level_start_index,
+                                    ## the following two args are only for no-encoder cfg
+                                    locations_flatten=locations_flattened, pos=pos_flatten,
                                     **data)
 
             bbox_list = self.pts_bbox_head.get_bboxes(outs, img_metas)

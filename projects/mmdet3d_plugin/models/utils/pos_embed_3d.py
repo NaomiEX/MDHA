@@ -10,7 +10,7 @@ from mmdet.models.utils.transformer import inverse_sigmoid
 class PositionEmbedding3d(BaseModule):
     def __init__(self, embed_dims=256,spatial_alignment_all_memory=True, depth_start = 1.0, depth_step=0.8, depth_num=64,
                  position_range=[-61.2, -61.2, -10.0, 61.2, 61.2, 10.0], use_inv_sigmoid_in_pos_embed=True,
-                 use_norm_input_in_pos_embed=False,flattened_inp=True):
+                 use_norm_input_in_pos_embed=False,flattened_inp=True, use_pos_embed3d=True):
         super().__init__()
         self.embed_dims=embed_dims
         self.spatial_alignment_all_memory=spatial_alignment_all_memory
@@ -24,11 +24,14 @@ class PositionEmbedding3d(BaseModule):
         index_1 = index + 1
         bin_size = (self.depth_range) / (self.depth_num * (1 + self.depth_num))
         coords_d = self.depth_start + bin_size * index * index_1
-        self.position_encoder = nn.Sequential(
-                nn.Linear(self.position_dim, self.embed_dims*4),
-                nn.ReLU(),
-                nn.Linear(self.embed_dims*4, self.embed_dims),
-            )
+        if use_pos_embed3d:
+            self.position_encoder = nn.Sequential(
+                    nn.Linear(self.position_dim, self.embed_dims*4),
+                    nn.ReLU(),
+                    nn.Linear(self.embed_dims*4, self.embed_dims),
+                )
+        else:
+            self.position_encoder = nn.Identity()
         self.coords_d = nn.Parameter(coords_d, requires_grad=False) # Tensor[64]
         self.use_inv_sigmoid_in_pos_embed=use_inv_sigmoid_in_pos_embed
         self.use_norm_input_in_pos_embed=use_norm_input_in_pos_embed

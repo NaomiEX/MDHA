@@ -9,6 +9,7 @@ from mmcv.cnn.bricks.plugin import build_plugin_layer
 from mmdet.core import (build_assigner, build_sampler, multi_apply,
                         reduce_mean)
 from mmdet.models.utils import build_transformer
+from mmdet.models.utils.transformer import inverse_sigmoid
 from mmdet.models import HEADS, build_loss
 from mmdet.models.dense_heads.anchor_free_head import AnchorFreeHead
 from mmdet3d.core.bbox.coders import build_bbox_coder
@@ -17,6 +18,7 @@ from projects.mmdet3d_plugin.core.bbox.util import normalize_bbox, clamp_to_rot_
 from projects.mmdet3d_plugin.models.utils.positional_encoding import pos2posemb3d, pos2posemb1d, nerf_positional_encoding
 from projects.mmdet3d_plugin.models.utils.misc import MLN, topk_gather, transform_reference_points, memory_refresh, SELayer_Linear
 from projects.mmdet3d_plugin.models.utils.lidar_utils import denormalize_lidar, clamp_to_lidar_range
+from projects.mmdet3d_plugin.models.utils.debug import *
 
 @HEADS.register_module()
 class StreamPETRHead(AnchorFreeHead):
@@ -104,8 +106,6 @@ class StreamPETRHead(AnchorFreeHead):
         self.fp16_enabled = False
         self.embed_dims = embed_dims
         self.use_pos_embed3d=pos_embed3d is not None
-        if self.use_pos_embed3d:
-            self.pos_embed3d=build_plugin_layer(pos_embed3d)[1]
         
         self.use_spatial_alignment=use_spatial_alignment
         self.limit_3d_pts_to_pc_range=limit_3d_pts_to_pc_range
@@ -163,6 +163,12 @@ class StreamPETRHead(AnchorFreeHead):
         self.encode_3d_ref_pts_as_query_pos=encode_3d_ref_pts_as_query_pos
         self.use_sigmoid_on_attn_out=use_sigmoid_on_attn_out
 
+        if not self.two_stage:
+            self.reference_points = nn.Embedding(self.num_query, 3)
+            if self.use_pos_embed3d:
+                self.pos_embed3d=build_plugin_layer(pos_embed3d)[1]
+
+
         self._init_layers()
         self.reset_memory()
 
@@ -177,8 +183,8 @@ class StreamPETRHead(AnchorFreeHead):
                 nn.Linear(self.embed_dims, self.embed_dims),
             )
         
-        if self.use_pos_embed3d:
-            self.featurized_pe = SELayer_Linear(self.embed_dims)
+        # if self.use_pos_embed3d:
+        #     self.featurized_pe = SELayer_Linear(self.embed_dims)
         if self.num_propagated > 0 :
             self.pseudo_reference_points = nn.Embedding(self.num_propagated, 3)
 
@@ -453,19 +459,30 @@ class StreamPETRHead(AnchorFreeHead):
 
     def forward(self, memory, img_metas, orig_spatial_shapes=None, flattened_spatial_shapes=None, 
                 flattened_level_start_index=None, query_init=None, reference_points=None,
-                dn_known_bboxs=None, dn_known_labels=None,
+                dn_known_bboxs=None, dn_known_labels=None, 
+                ## note the following elements are only for non-two-stage
+                locations_flatten=None, 
+                pos=None,
+
                 **data):
         # zero init the memory bank
         self.pre_update_memory(data)
 
         B=data['img_feats_flatten'].size(0)
 
-        memory = self.memory_embed(memory) # [B, N, HW, C] | [B, h0*N*w0+..., C]
 
         if not self.two_stage:
-            raise NotImplementedError("WARNING: not using two stage")
+            if do_debug_process(self): print("WARNING! NOT USING TWO STAGE")
+            reference_points = inverse_sigmoid(self.reference_points.weight)
+            pos_embed3d, cone, _ = self.pos_embed3d(data, locations_flatten, img_metas,
+                                                    orig_spatial_shapes, lidar2img=data['lidar2img'])
+            memory = self.spatial_alignment(memory, cone)
+            # pos_embed3d = self.featurized_pe(pos_embed3d, memory)
+            # pos=pos+pos_embed3d
         elif self.limit_3d_pts_to_pc_range:
             reference_points = torch.clamp(reference_points.clone(),min=0.0, max=1.0)
+            
+        memory = self.memory_embed(memory) # [B, N, HW, C] | [B, h0*N*w0+..., C]
         # reference_points: [B, pad_size+Nq, 3] normalized in lidar range [0,1]
         # attn_mask: [pad_size + Nq + num_propagated,  pad_size + Nq + memory_len] | None
         # mask_dict: dict | None
