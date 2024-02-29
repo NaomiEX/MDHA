@@ -106,8 +106,6 @@ class StreamPETRHead(AnchorFreeHead):
         self.fp16_enabled = False
         self.embed_dims = embed_dims
         self.use_pos_embed3d=pos_embed3d is not None
-        if self.use_pos_embed3d:
-            self.pos_embed3d=build_plugin_layer(pos_embed3d)[1]
         
         self.use_spatial_alignment=use_spatial_alignment
         self.limit_3d_pts_to_pc_range=limit_3d_pts_to_pc_range
@@ -167,6 +165,8 @@ class StreamPETRHead(AnchorFreeHead):
 
         if not self.two_stage:
             self.reference_points = nn.Embedding(self.num_query, 3)
+            if self.use_pos_embed3d:
+                self.pos_embed3d=build_plugin_layer(pos_embed3d)[1]
 
 
         self._init_layers()
@@ -183,8 +183,8 @@ class StreamPETRHead(AnchorFreeHead):
                 nn.Linear(self.embed_dims, self.embed_dims),
             )
         
-        if self.use_pos_embed3d:
-            self.featurized_pe = SELayer_Linear(self.embed_dims)
+        # if self.use_pos_embed3d:
+        #     self.featurized_pe = SELayer_Linear(self.embed_dims)
         if self.num_propagated > 0 :
             self.pseudo_reference_points = nn.Embedding(self.num_propagated, 3)
 
@@ -474,12 +474,11 @@ class StreamPETRHead(AnchorFreeHead):
         if not self.two_stage:
             if do_debug_process(self): print("WARNING! NOT USING TWO STAGE")
             reference_points = inverse_sigmoid(self.reference_points.weight)
-            assert self.use_spatial_alignment and self.use_pos_embed3d
             pos_embed3d, cone, _ = self.pos_embed3d(data, locations_flatten, img_metas,
                                                     orig_spatial_shapes, lidar2img=data['lidar2img'])
-            src = self.spatial_alignment(src, cone)
-            pos_embed3d = self.featurized_pe(pos_embed3d, src)
-            pos=pos+pos_embed3d
+            memory = self.spatial_alignment(memory, cone)
+            # pos_embed3d = self.featurized_pe(pos_embed3d, memory)
+            # pos=pos+pos_embed3d
         elif self.limit_3d_pts_to_pc_range:
             reference_points = torch.clamp(reference_points.clone(),min=0.0, max=1.0)
             

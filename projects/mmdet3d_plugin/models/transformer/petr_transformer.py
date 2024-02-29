@@ -171,7 +171,7 @@ class PETRTemporalTransformer(BaseModule):
                 flattened_spatial_shapes=None, flattened_level_start_index=None,
                 img_metas=None, query_embedding=None):
         
-        assert self.two_stage
+        # assert self.two_stage
 
         # out_dec: [num_layers, B, Q, C]
         # out_ref_pts: [num_layers, B, Q, 3]
@@ -179,7 +179,7 @@ class PETRTemporalTransformer(BaseModule):
         outs_decoder = self.decoder(
             anchor_refinements=anchor_refinements,
             query=tgt,
-            key=memory if not self.two_stage else None,
+            key=None,
             value=memory,
             key_pos=pos_embed, # pos_embed is None if two_stage
             query_pos=query_pos,
@@ -269,10 +269,11 @@ class PETRTransformerDecoder(TransformerLayerSequence):
             # [B, Q, 2]
             with torch.no_grad():
                 if self.ref_pts_mode == "single":
-                    reference_points_2d_cam, _ = convert_3d_to_2d_global_cam_ref_pts(cam_transformations,
+                    reference_points_2d_cam, non_matches = convert_3d_to_2d_global_cam_ref_pts(cam_transformations,
                                                                         ref_pts_unnormalized, orig_spatial_shapes,
                                                                         img_metas, ret_num_non_matches=True)
-                    
+                    if do_debug_process(self, repeating=True):
+                        print(f"proportion of ref pts out of range: {non_matches.sum()/non_matches.numel()}")
                     
                     num_second_matches, second_matches_valid_idxs, idx_with_second_match = [None]*3
                 elif self.ref_pts_mode == "multiple":

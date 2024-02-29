@@ -110,7 +110,8 @@ position_embedding_3d = dict(
     position_range=[-61.2, -61.2, -10.0, 61.2, 61.2, 10.0], 
     use_inv_sigmoid_in_pos_embed=True,
     use_norm_input_in_pos_embed=False,
-    flattened_inp=spatial_alignment!="petr3d"
+    flattened_inp=spatial_alignment!="petr3d",
+    use_pos_embed3d=modules['encoder']
 )
 
 dec_ref_pts_mode = "single" # either single or multiple
