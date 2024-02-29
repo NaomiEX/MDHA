@@ -261,7 +261,7 @@ class IQTransformerEncoder(TransformerLayerSequence):
             elif self.encode_3dpos_method == "mln":
                 pos = self.pos3d_encoding(pos, pos_embed3d)
         else:
-            if do_debug_process(self): print("NOT USING 3D POS IN ENCODER")
+            if do_debug_process(self): print("ENCODER: NOT USING 3D POS IN ENCODER")
             img2lidar = []
             i2l = torch.inverse(lidar2img.to('cpu')).to('cuda') # [B, N, 4, 4]
             for (h, w) in orig_spatial_shapes:

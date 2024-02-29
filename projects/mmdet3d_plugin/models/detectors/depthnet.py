@@ -129,6 +129,8 @@ class DepthNet(BaseModule):
                 w = torch.exp(-x/lam)
                 if self.depth_weight_bound:
                     mask=w < self.depth_weight_limit
+                    if do_debug_process(self, repeating=True, interval=500):
+                        print(f"masked proportion (lvl {lvl}): {mask.sum()/mask.numel()}")
                     w = w.masked_fill(mask, 0.0)
                 return w
             n_levels=orig_spatial_shapes.size(0)

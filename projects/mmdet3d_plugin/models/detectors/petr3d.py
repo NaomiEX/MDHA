@@ -396,14 +396,15 @@ class Petr3D(MVXTwoStageDetector):
 
     @force_fp32(apply_to=('img'))
     def forward(self, return_loss=True, **data):
-        # with open("./experiments/data_forward_clean.pkl", "wb") as f:
-        #     pickle.dump(data, f)
-        # time.sleep(5)
-        # raise Exception()
         if return_loss:
+            rank, _=get_dist_info()
+            # if rank == 0:
+            #     with open("./experiments/data_forward_bs1.pkl", "wb") as f:
+            #         pickle.dump(data, f)
+            #     time.sleep(2)
+            #     raise Exception()
             for key in ['gt_bboxes_3d', 'gt_labels_3d', 'img_metas']:
                 data[key] = list(zip(*data[key]))
-            rank, _=get_dist_info()
             
             if do_debug_process(self, repeating=True):
                 print(f"GPU {rank} memory allocated: {torch.cuda.memory_allocated(rank)/1e9} GB")
