@@ -496,6 +496,8 @@ class Petr3D(MVXTwoStageDetector):
                                     out_memory=out_memory, orig_spatial_shapes=spatial_shapes,
                                     flattened_spatial_shapes=flattened_spatial_shapes,
                                     flattened_level_start_index=flattened_level_start_index,
+                                    ## the following two args are only for no-encoder cfg
+                                    locations_flatten=locations_flattened, pos=pos_flatten,
                                     **data)
 
             bbox_list = self.pts_bbox_head.get_bboxes(outs, img_metas)
