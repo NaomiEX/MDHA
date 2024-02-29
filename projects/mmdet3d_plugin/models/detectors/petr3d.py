@@ -395,7 +395,7 @@ class Petr3D(MVXTwoStageDetector):
 
 
     @force_fp32(apply_to=('img'))
-    def forward(self, return_loss=True, **data):
+    def forward(self, return_loss=True, viz=False, **data):
         # with open("./experiments/data_forward_clean.pkl", "wb") as f:
         #     pickle.dump(data, f)
         # time.sleep(5)
@@ -412,7 +412,15 @@ class Petr3D(MVXTwoStageDetector):
             self.debug.iter += 1
             out= self.forward_train(**data)
         else:
-            out= self.forward_test(**data)
+            # if 5000 > self.debug.iter > 300:
+            #     with open(f"./experiments/test_data/data_iter_{self.debug.iter}.pkl", "wb") as f:
+            #         pickle.dump(data, f)
+            # if self.debug.iter > 5000:
+            #     time.sleep(2)
+            #     raise Exception()
+            out= self.forward_test(viz=viz, **data)
+            # ! REMOVE LATER
+            self.debug.iter += 1
 
         return out
 
@@ -441,7 +449,7 @@ class Petr3D(MVXTwoStageDetector):
         return losses
   
   
-    def forward_test(self, img_metas, rescale, **data):
+    def forward_test(self, img_metas, rescale, viz=False, **data):
         self.test_flag = True
         for var, name in [(img_metas, 'img_metas')]:
             if not isinstance(var, list):
@@ -452,9 +460,9 @@ class Petr3D(MVXTwoStageDetector):
                 data[key] = data[key][0][0].unsqueeze(0)
             else:
                 data[key] = data[key][0]
-        return self.simple_test(img_metas[0], **data)
+        return self.simple_test(img_metas[0], viz=viz, **data)
 
-    def simple_test_pts(self, img_metas, **data):
+    def simple_test_pts(self, img_metas, viz=False, **data):
         """Test function of point cloud branch.
             - img_metas: List[B] with element img metas dict
         """
@@ -501,9 +509,13 @@ class Petr3D(MVXTwoStageDetector):
                 bbox3d2result(bboxes, scores, labels)
                 for bboxes, scores, labels in bbox_list
             ]
-        return bbox_results
+        # print("!!WARNING, RETURNING ENC OUTS TOO!!")
+        if not viz:
+            return bbox_results
+        else:
+            return bbox_results, enc_pred_dict
     
-    def simple_test(self, img_metas, **data):
+    def simple_test(self, img_metas, viz=False, **data):
         """Test function without augmentaiton.
             img_metas: List[B] with element img metas dict
         """
@@ -518,9 +530,15 @@ class Petr3D(MVXTwoStageDetector):
 
         bbox_list = [dict() for i in range(len(img_metas))]
         bbox_pts = self.simple_test_pts(
-            img_metas, **data)
+            img_metas, viz=viz, **data)
+        if viz:
+            enc_pred_dict = bbox_pts[1]
+            bbox_pts = bbox_pts[0]
         for result_dict, pts_bbox in zip(bbox_list, bbox_pts):
             result_dict['pts_bbox'] = pts_bbox
-        return bbox_list
+        if viz:
+            return bbox_list, enc_pred_dict
+        else:
+            return bbox_list
 
     
