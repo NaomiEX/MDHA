@@ -2,12 +2,15 @@ backbone_norm_cfg = dict(type='LN', requires_grad=True)
 plugin=True
 plugin_dir='projects/mmdet3d_plugin/'
 
+revise_keys = [('backbone', 'img_backbone')]
+
 # If point cloud range is changed, the models should also change their point
 # cloud range accordingly
 point_cloud_range = [-51.2, -51.2, -5.0, 51.2, 51.2, 3.0]
 voxel_size = [0.2, 0.2, 8]
 img_norm_cfg = dict(
-    mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_rgb=True)
+    mean=[103.530, 116.280, 123.675], std=[1.0, 1.0, 1.0], to_rgb=False
+)
 # For nuScenes we usually do 10-class detection
 class_names = [
     'car', 'truck', 'construction_vehicle', 'bus', 'trailer', 'barrier',
@@ -20,11 +23,10 @@ embed_dims=256
 strides=[4, 8, 16, 32]
 num_levels=len(strides)
 update_pos=True
-enc_use_anchor_pos=True
 
 queue_length = 1
 num_frame_losses = 1
-collect_keys=['lidar2img', 'intrinsics', 'extrinsics', 'timestamp', 'ego_pose', 'ego_pose_inv', 'focal']
+collect_keys=['lidar2img', 'intrinsics', 'extrinsics', 'timestamp', 'ego_pose', 'ego_pose_inv']
 input_modality = dict(
     use_lidar=False,
     use_camera=True,
@@ -116,27 +118,6 @@ position_embedding_3d = dict(
     flattened_inp=spatial_alignment!="petr3d"
 )
 
-# ENSURE CONSISTENT WITH CONSTANTS.PY
-depth_pred_positions = {
-    "before_encoder": 0,
-    "in_encoder": 1,
-}
-depth_pred_pos = depth_pred_positions["before_encoder"]
-
-depthnet = dict(
-    type="DepthNet",
-    in_channels=embed_dims,
-    depth_pred_position=depth_pred_pos,
-    mlvl_feats_format=mlvl_feats_format,
-    n_levels=len(strides),
-    loss_depth = dict(type='L1Loss', loss_weight=0.01),
-    depth_weight_bound=True,
-    depth_weight_limit=0.01,
-    use_focal=False,
-    single_target=False,
-    sigmoid_out=True,
-)
-
 encoder_anchor_refinement = dict(
     type="AnchorRefinement",
     embed_dims=embed_dims,
@@ -155,21 +136,34 @@ encoder = dict(
     # pc range is set by petr3d
     learn_ref_pts_type="anchor",
     use_spatial_alignment=spatial_alignment == "encoder",
-    encode_ref_pts_depth_into_query_pos=False,
+    encode_ref_pts_depth_into_query_pos=True,
     ref_pts_depth_encoding_method="mln",
     use_inv_sigmoid=use_inv_sigmoid["encoder"],
     sync_cls_avg_factor=False,
     position_range=[-61.2, -61.2, -10.0, 61.2, 61.2, 10.0],
-    use_anchor_pos=enc_use_anchor_pos,
 
     ## modules
-
     anchor_refinement=encoder_anchor_refinement,
     pos_embed3d= position_embedding_3d if pos_embed3d == "encoder" else None,
     mask_predictor=None,
     reference_point_generator = dict(
         type="ReferencePoints",
-        coords_depth_type="learnable",
+        coords_depth_type="fixed",
+        coords_depth_files={
+            0: "./experiments/depth_coords/MDHA/r101_depth_map_352x128.pkl",
+            1: "./experiments/depth_coords/MDHA/r101_depth_map_176x64.pkl",
+            2: "./experiments/depth_coords/MDHA/r101_depth_map_88x32.pkl",
+            3: "./experiments/depth_coords/MDHA/r101_depth_map_44x16.pkl",
+        },
+        n_levels=4,
+        coords_depth_bucket_size=[
+            [128, 352],
+            [64, 176],
+            [32, 88],
+            [16, 44]
+        ],
+        coords_depth_file_format="xy",
+        coords_depth_bucket_format="yx",
     ),
 
     transformerlayers=dict(
@@ -274,7 +268,7 @@ pts_bbox_head=dict(
                         ],
                     feedforward_channels=2048, # TODO: TRY WITH JUST 1024
                     ffn_dropout=0.1,
-                    with_cp=False,  ###use checkpoint to save memory
+                    with_cp=True,  ###use checkpoint to save memory
                     operation_order=('self_attn', 'norm', 'cross_attn', 'norm',
                                      'ffn', 'norm'),
                     batch_first=True,
@@ -296,27 +290,28 @@ model = dict(
     strides=strides,
     use_grid_mask=True,
     ##new##
-    depth_net=depthnet,
-    depth_pred_position=depth_pred_pos,
     mlvl_feats_format=mlvl_feats_format,
     encoder=encoder if modules['encoder'] else None,
     num_cameras=6,
     pc_range=point_cloud_range,
-    use_xy_embed=not enc_use_anchor_pos,
+    use_xy_embed=True,
     use_cam_embed=False,
     use_lvl_embed=modules['encoder'], # ! IMPORTANT: MAKE THIS TRUE IF USING ENCODER
     ##
     img_backbone=dict(
+        init_cfg=dict(
+            type='Pretrained', checkpoint="ckpt/cascade_mask_rcnn_r101_fpn_1x_nuim_20201024_134804-45215b1e.pth",
+            prefix='backbone.'),
         type="ResNet",
-        depth=50,
+        depth=101,
         num_stages=4,
         frozen_stages=-1,
         norm_eval=False,
         style="pytorch",
-        with_cp=False,
+        with_cp=True,
         out_indices=(0, 1, 2, 3),
         norm_cfg=dict(type="BN", requires_grad=True),
-        pretrained="ckpt/resnet50-19c8e357.pth",
+        # pretrained="ckpt/resnet50-19c8e357.pth",
     ),
     img_neck=dict(
         type="FPN",
@@ -342,7 +337,7 @@ file_client_args = dict(backend='disk')
 
 ida_aug_conf = {
         "resize_lim": (0.38, 0.55),
-        "final_dim": (256, 704),
+        "final_dim": (512, 1408),
         "bot_pct_lim": (0.0, 0.0),
         "rot_lim": (0.0, 0.0),
         "H": 900,
@@ -390,7 +385,7 @@ test_pipeline = [
                 class_names=class_names,
                 with_label=False),
             dict(type='Collect3D', keys=['img'] + collect_keys,
-            meta_keys=['filename', 'ori_shape', 'img_shape','pad_shape', 'scale_factor', 'flip', 'box_mode_3d', 'box_type_3d', 'img_norm_cfg', 'scene_token'])
+            meta_keys=['pad_shape'])
         ])
 ]
 
@@ -428,3 +423,4 @@ data = dict(
 
 # evaluation = dict(interval=num_iters_per_epoch*num_epochs, pipeline=test_pipeline)
 evaluation = dict(pipeline=test_pipeline)
+
