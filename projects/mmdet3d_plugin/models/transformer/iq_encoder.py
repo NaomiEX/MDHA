@@ -322,10 +322,11 @@ class IQTransformerEncoder(TransformerLayerSequence):
             raise NotImplementedError()
         
         if self.use_anchor_pos:
+            if do_debug_process(self): print("ENCODER: USING ANCHOR POS EMBEDDING")
             pos += self.anchor_embedding(pos2posemb3d(output_proposals))
             
         elif self.encode_ref_pts_depth_into_query_pos:
-            if do_debug_process(self): print("encoding depth into query pos")
+            if do_debug_process(self): print("ENCODER: ENCODING DEPTH REF PTS INTO QUERY POS")
             # assert ((ref_pts_depth_norm >= 0.0) & (ref_pts_depth_norm <= 1.0)).all() # NOTE: from depthnet, depths can be out of range
             ref_pts_depth_norm_emb = pos2posemb1d(ref_pts_depth_norm) # [B, h0*N*w0+..., 256]
             if self.ref_pts_depth_encoding_method == "mln":
