@@ -397,14 +397,15 @@ class Petr3D(MVXTwoStageDetector):
 
     @force_fp32(apply_to=('img'))
     def forward(self, return_loss=True, **data):
-        # with open("./experiments/data_forward_clean.pkl", "wb") as f:
-        #     pickle.dump(data, f)
-        # time.sleep(5)
-        # raise Exception()
         if return_loss:
+            rank, _=get_dist_info()
+            # if rank == 0:
+            #     with open("./experiments/data_forward_bs1.pkl", "wb") as f:
+            #         pickle.dump(data, f)
+            #     time.sleep(2)
+            #     raise Exception()
             for key in ['gt_bboxes_3d', 'gt_labels_3d', 'img_metas']:
                 data[key] = list(zip(*data[key]))
-            rank, _=get_dist_info()
             
             if do_debug_process(self, repeating=True):
                 print(f"GPU {rank} memory allocated: {torch.cuda.memory_allocated(rank)/1e9} GB")
@@ -447,23 +448,6 @@ class Petr3D(MVXTwoStageDetector):
   
   
     def forward_test(self, img_metas, rescale, **data):
-        """
-        Args:
-            img_metas (_type_): _description_
-            rescale (_type_): _description_
-            data: dict(
-                - img_metas: List[1] with element List[1] with element img metas dict
-                - img: List[1] with element Tensor[B=1, N=6, C=3, H=256, W=704]
-                - lidar2img: List[1] with element List[1] with element [N=6, 4, 4]
-                ...
-            )
-
-        Raises:
-            TypeError: _description_
-
-        Returns:
-            _type_: _description_
-        """
         self.test_flag = True
         for var, name in [(img_metas, 'img_metas')]:
             if not isinstance(var, list):
@@ -485,35 +469,26 @@ class Petr3D(MVXTwoStageDetector):
         #        [B, num_cams, 256, H/16, W/16],
         #        [B, num_cams, 256, H/32, W/32],
         #        [B, num_cams, 256, H/64, W/64])]
-        if self.depth_net is not None and self.depth_pred_position == 0:
+        if self.depth_net is not None and self.depth_pred_position == DEPTH_PRED_BEFORE_ENCODER:
             # [B, h0*N*w0+..., 1]
-            depth_pred = self.depth_net(data['img_feats'], return_flattened=True)
+            depth_pred = self.depth_net(data['img_feats'], focal=data['focal'], return_flattened=True)
         else:
             depth_pred=None
         cur_mlvl_feats_flatten, pos_flatten, spatial_shapes, \
             flattened_spatial_shapes, flattened_level_start_index=self.prepare_mlvl_feats(data['img_feats'])
         data['img_feats_flatten'] = cur_mlvl_feats_flatten
 
-        location, locations_flattened = self.prepare_location_multiscale(img_metas, spatial_shapes, **data)
-        if self.with_img_roi_head:
-            # location_roihead = [loc.permute(0, 2, 1, 3, 4) for loc in location] # [B, N, H_i, W_i, 2]
-            outs_roi = self.forward_roi_head(None, **data) # location doesn't matter cus in test it just returns None
-            topk_indexes = outs_roi['topk_indexes']
-        else:
-            topk_indexes=None
-
-        if self.has_extra_mod:
-            raise NotImplementedError()
+        locations_flattened = self.prepare_location_multiscale(img_metas, spatial_shapes, **data)
         
         if self.use_encoder:
             enc_pred_dict, out_memory = self.encoder(data['img_feats_flatten'], spatial_shapes, 
-                                                flattened_spatial_shapes, flattened_level_start_index, 
-                                                pos_flatten, img_metas, locations_flattened, depth_pred=depth_pred,
-                                                ensure_no_print=True,
-                                                **data)
+                                            flattened_spatial_shapes, flattened_level_start_index, 
+                                            pos_flatten, img_metas, locations_flattened, depth_pred=depth_pred,
+                                            **data)
         else:
             enc_pred_dict, out_memory=None, None
         if self.with_pts_bbox:
+
             B = data['img_feats_flatten'].size(0)
             if img_metas[0]['scene_token'] != self.prev_scene_token: # different scene, reset memory
                 self.prev_scene_token = img_metas[0]['scene_token']
@@ -521,13 +496,13 @@ class Petr3D(MVXTwoStageDetector):
                 self.pts_bbox_head.reset_memory()
             else:
                 data['prev_exists'] = data['img'].new_ones(B) # one Tensor[B]
-            outs = self.forward_pts_bbox(locations_flattened, img_metas, enc_pred_dict=enc_pred_dict,
-                                    out_memory=out_memory, topk_indexes=topk_indexes, orig_spatial_shapes=spatial_shapes,
+            outs = self.forward_pts_bbox(img_metas, enc_pred_dict=enc_pred_dict,
+                                    out_memory=out_memory, orig_spatial_shapes=spatial_shapes,
                                     flattened_spatial_shapes=flattened_spatial_shapes,
-                                    flattened_level_start_index=flattened_level_start_index, **data)
+                                    flattened_level_start_index=flattened_level_start_index,
+                                    **data)
 
-            bbox_list = self.pts_bbox_head.get_bboxes(
-                outs, img_metas)
+            bbox_list = self.pts_bbox_head.get_bboxes(outs, img_metas)
             bbox_results = [
                 bbox3d2result(bboxes, scores, labels)
                 for bboxes, scores, labels in bbox_list

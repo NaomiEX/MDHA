@@ -14,15 +14,16 @@ class_names = [
     'motorcycle', 'bicycle', 'pedestrian', 'traffic_cone'
 ]
 
-enc_attn_num_points=4
+enc_attn_num_points=24
 dec_attn_num_points=24
 embed_dims=256
 strides=[4, 8, 16, 32]
 num_levels=len(strides)
+update_pos=True
 
 queue_length = 1
 num_frame_losses = 1
-collect_keys=['lidar2img', 'intrinsics', 'extrinsics', 'timestamp', 'ego_pose', 'ego_pose_inv']
+collect_keys=['lidar2img', 'intrinsics', 'extrinsics', 'timestamp', 'ego_pose', 'ego_pose_inv', 'focal']
 input_modality = dict(
     use_lidar=False,
     use_camera=True,
@@ -45,6 +46,10 @@ use_inv_sigmoid = {
     "decoder": False 
 }
 global_deform_attn_wrap_around=False
+
+anchor_dim = 10
+enc_with_quality_estimation=False
+dec_with_quality_estimation=False
 
 ## modules
 modules = dict(
@@ -110,6 +115,37 @@ position_embedding_3d = dict(
     flattened_inp=spatial_alignment!="petr3d"
 )
 
+# ENSURE CONSISTENT WITH CONSTANTS.PY
+depth_pred_positions = {
+    "before_encoder": 0,
+    "in_encoder": 1,
+}
+depth_pred_pos = depth_pred_positions["before_encoder"]
+
+depthnet = dict(
+    type="DepthNet",
+    in_channels=embed_dims,
+    depth_pred_position=depth_pred_pos,
+    mlvl_feats_format=mlvl_feats_format,
+    n_levels=len(strides),
+    loss_depth = dict(type='L1Loss', loss_weight=0.01),
+    depth_weight_bound=True,
+    depth_weight_limit=0.01,
+    use_focal=False,
+    single_target=False,
+    sigmoid_out=True,
+)
+
+encoder_anchor_refinement = dict(
+    type="AnchorRefinement",
+    embed_dims=embed_dims,
+    output_dim=anchor_dim,
+    num_cls=len(class_names),
+    with_quality_estimation=enc_with_quality_estimation,
+    refine_center_only=True,
+    limit=False,
+)
+
 # NOTE: the encoder config is from encoder_anchor_fixedfull_xyrefptsqencoding_1gpu
 encoder = dict(
     type="IQTransformerEncoder",
@@ -118,31 +154,20 @@ encoder = dict(
     # pc range is set by petr3d
     learn_ref_pts_type="anchor",
     use_spatial_alignment=spatial_alignment == "encoder",
-    pos_embed3d= position_embedding_3d if pos_embed3d == "encoder" else None,
     encode_ref_pts_depth_into_query_pos=True,
     ref_pts_depth_encoding_method="mln",
     use_inv_sigmoid=use_inv_sigmoid["encoder"],
     sync_cls_avg_factor=False,
-    mask_predictor=None,
     position_range=[-61.2, -61.2, -10.0, 61.2, 61.2, 10.0],
+
+    ## modules
+
+    anchor_refinement=encoder_anchor_refinement,
+    pos_embed3d= position_embedding_3d if pos_embed3d == "encoder" else None,
+    mask_predictor=None,
     reference_point_generator = dict(
         type="ReferencePoints",
-        coords_depth_type="fixed",
-        coords_depth_files={
-            0: "./experiments/depth_coords/MDHA/depth_map_176x64.pkl",
-            1: "./experiments/depth_coords/MDHA/depth_map_88x32.pkl",
-            2: "./experiments/depth_coords/MDHA/depth_map_44x16.pkl",
-            3: "./experiments/depth_coords/MDHA/depth_map_22x8.pkl",
-        },
-        n_levels=4,
-        coords_depth_bucket_size=[
-            [64, 176],
-            [32, 88],
-            [16, 44],
-            [8, 22]
-        ],
-        coords_depth_file_format="xy",
-        coords_depth_bucket_format="yx",
+        coords_depth_type="learnable",
     ),
 
     transformerlayers=dict(
@@ -180,6 +205,16 @@ dn_args = dict(
     split = 0.75, ###positive rate
 )
 
+decoder_anchor_refinement = dict(
+    type="AnchorRefinement",
+    embed_dims=embed_dims,
+    output_dim=anchor_dim,
+    num_cls=len(class_names),
+    with_quality_estimation=dec_with_quality_estimation,
+    refine_center_only=True,
+    limit=False,
+)
+
 pts_bbox_head=dict(
         type='StreamPETRHead',
         num_query=644,
@@ -195,6 +230,7 @@ pts_bbox_head=dict(
         **obj_det3d_loss_cfg,
 
         ##new##
+        anchor_refinement=decoder_anchor_refinement,
         pos_embed3d= position_embedding_3d if pos_embed3d=="decoder" else None,
         use_spatial_alignment=spatial_alignment=="decoder",
         two_stage=modules['encoder'],
@@ -206,6 +242,7 @@ pts_bbox_head=dict(
             type='PETRTemporalTransformer',
             decoder=dict(
                 type='PETRTransformerDecoder',
+                update_pos=update_pos,
                 return_intermediate=True,
                 num_layers=6,
                 ref_pts_mode=dec_ref_pts_mode,
@@ -257,6 +294,8 @@ model = dict(
     strides=strides,
     use_grid_mask=True,
     ##new##
+    depth_net=depthnet,
+    depth_pred_position=depth_pred_pos,
     mlvl_feats_format=mlvl_feats_format,
     encoder=encoder if modules['encoder'] else None,
     num_cameras=6,
@@ -349,7 +388,7 @@ test_pipeline = [
                 class_names=class_names,
                 with_label=False),
             dict(type='Collect3D', keys=['img'] + collect_keys,
-            meta_keys=['filename', 'ori_shape', 'img_shape','pad_shape', 'scale_factor', 'flip', 'box_mode_3d', 'box_type_3d', 'img_norm_cfg', 'scene_token'])
+            meta_keys=['pad_shape'])
         ])
 ]
 

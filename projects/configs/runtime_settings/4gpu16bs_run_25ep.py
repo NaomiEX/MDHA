@@ -1,12 +1,11 @@
 _base_ = [
     "./default.py"
 ]
-
-total_batch_size = 2
-num_gpus=2
-batch_size=total_batch_size // num_gpus
-num_iters_per_epoch = 28130 // total_batch_size
+num_gpus=4
+batch_size=4
+num_iters_per_epoch = 28130 // (num_gpus * batch_size)
 num_epochs = 25
+
 
 BS_LR_MAP = {
     16: 4e-4,
@@ -15,7 +14,7 @@ BS_LR_MAP = {
 }
 optimizer = dict(
     type='AdamW', 
-    lr=BS_LR_MAP.get(total_batch_size, 4e-4), # bs 8: 2e-4 || bs 16: 4e-4
+    lr=BS_LR_MAP.get(num_gpus*batch_size, 4e-4), # bs 8: 2e-4 || bs 16: 4e-4
     paramwise_cfg=dict(
         custom_keys={
             'img_backbone': dict(lr_mult=0.25), # 0.25 only for Focal-PETR with R50-in1k pretrained weights
@@ -27,7 +26,7 @@ optimizer_config = dict(type='Fp16OptimizerHook', loss_scale='dynamic', grad_cli
 lr_config = dict(
     policy='CosineAnnealing',
     warmup='linear',
-    warmup_iters=500,
+    warmup_iters=250,
     warmup_ratio=1.0 / 3,
     min_lr_ratio=1e-3,
     )
