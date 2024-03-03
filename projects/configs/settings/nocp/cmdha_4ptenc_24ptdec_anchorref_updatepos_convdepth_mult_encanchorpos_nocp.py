@@ -155,7 +155,7 @@ encoder = dict(
     # pc range is set by petr3d
     learn_ref_pts_type="anchor",
     use_spatial_alignment=spatial_alignment == "encoder",
-    encode_ref_pts_depth_into_query_pos=True,
+    encode_ref_pts_depth_into_query_pos=False,
     ref_pts_depth_encoding_method="mln",
     use_inv_sigmoid=use_inv_sigmoid["encoder"],
     sync_cls_avg_factor=False,
