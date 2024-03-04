@@ -117,6 +117,9 @@ class Petr3D(MVXTwoStageDetector):
                 if any([type(m).__name__ == debug_mod for debug_mod in debug_modules]):
                     m.debug=self.debug
 
+        ## print initial weights
+        print(f"PETR3D: img backbone conv1 initial weight: {self.img_backbone.conv1.weight[0]}")
+
     def init_weights(self):
         if self.use_encoder:
             self.encoder.init_weights()
@@ -424,6 +427,7 @@ class Petr3D(MVXTwoStageDetector):
                       gt_labels_3d=None,
                       **data):
         if do_debug_process(self):
+            print(f"PETR3D: img backbone conv1 after initialization weight: {self.img_backbone.conv1.weight[0]}")
             print(f"img shape: {data['img'].shape}")
             assert Projections.IMG_SIZE[0] == data['img'].size(-1), \
                 f"Projection's expected input W to be {Projections.IMG_SIZE[0]} but got: {data['img'].size(-1)}"
