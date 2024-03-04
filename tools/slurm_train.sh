@@ -17,7 +17,7 @@ PY_ARGS=${@:6}
 PYTHONPATH="$(dirname $0)/..":$PYTHONPATH \
 srun -p ${PARTITION} \
     --job-name=${JOB_NAME} \
-    --gres=gpu:a100:${GPUS} \
+    --gres=gpu:a100:${GPUS_PER_NODE} \
     --nodes=${NODES} \
     --mem=${MEM} \
     --ntasks=${GPUS} \

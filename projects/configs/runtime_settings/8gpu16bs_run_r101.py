@@ -33,7 +33,7 @@ lr_config = dict(
 
 evaluation_interval=num_iters_per_epoch*num_epochs
 find_unused_parameters=False #### when use checkpoint, find_unused_parameters must be False
-checkpoint_config = dict(interval=num_iters_per_epoch, max_keep_ckpts=12)
+checkpoint_config = dict(interval=num_iters_per_epoch, max_keep_ckpts=20)
 runner = dict(
     type='IterBasedRunner', max_iters=num_epochs * num_iters_per_epoch)
 load_from ="ckpt/cascade_mask_rcnn_r101_fpn_1x_nuim_20201024_134804-45215b1e.pth"

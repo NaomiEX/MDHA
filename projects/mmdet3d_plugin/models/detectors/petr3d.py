@@ -401,7 +401,7 @@ class Petr3D(MVXTwoStageDetector):
     @force_fp32(apply_to=('img'))
     def forward(self, return_loss=True, **data):
         if return_loss:
-            rank, _=get_dist_info()
+            # rank, _=get_dist_info()
             # if rank == 0:
             #     with open("./experiments/data_forward_bs1.pkl", "wb") as f:
             #         pickle.dump(data, f)
@@ -409,11 +409,11 @@ class Petr3D(MVXTwoStageDetector):
             #     raise Exception()
             for key in ['gt_bboxes_3d', 'gt_labels_3d', 'img_metas']:
                 data[key] = list(zip(*data[key]))
-            
-            if do_debug_process(self, repeating=True):
-                print(f"GPU {rank} memory allocated: {torch.cuda.memory_allocated(rank)/1e9} GB")
-                print(f"GPU {rank} memory reserved: {torch.cuda.memory_reserved(rank)/1e9} GB")
-                print(f"GPU {rank} max memory reserved: {torch.cuda.max_memory_reserved(rank)/1e9} GB")
+            if self.debug.iter == 10:
+            # if do_debug_process(self, repeating=True):
+                print(f"GPU memory allocated: {torch.cuda.memory_allocated()/1e9} GB")
+                print(f"GPU memory reserved: {torch.cuda.memory_reserved()/1e9} GB")
+                print(f"GPU max memory reserved: {torch.cuda.max_memory_reserved()/1e9} GB")
             self.debug.iter += 1
             out= self.forward_train(**data)
         else:
