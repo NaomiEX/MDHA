@@ -4,7 +4,7 @@ _base_ = [
 num_gpus=4
 batch_size=2
 num_iters_per_epoch = 28130 // (num_gpus * batch_size)
-num_epochs = 60
+num_epochs = 100
 
 
 BS_LR_MAP = {
