@@ -14,7 +14,7 @@ BS_LR_MAP = {
 }
 optimizer = dict(
     type='AdamW', 
-    lr=4e-4, # bs 8: 2e-4 || bs 16: 4e-4
+    lr=2e-4, # bs 8: 2e-4 || bs 16: 4e-4
     paramwise_cfg=dict(
         custom_keys={
             'img_backbone': dict(lr_mult=0.1), # 0.25 only for Focal-PETR with R50-in1k pretrained weights
