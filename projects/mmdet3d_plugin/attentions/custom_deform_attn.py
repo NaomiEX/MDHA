@@ -215,6 +215,7 @@ class CustomDeformAttn(BaseModule):
                 'Last dim of reference_points must be 2 or 4, but get {} instead.'.format(reference_points.shape[-1]))
         assert sampling_locations.shape == sampling_offsets.shape
         if self.wrap_around:
+            if do_debug_process(self): print(f"CDA: USING WRAP AROUND")
             sampling_locations = sampling_locations % 1.0
 
         # [B, p, num_heads * n_levels * n_points]
