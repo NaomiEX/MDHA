@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import numpy as np
+from mmcv.cnn import Linear
 from mmdet.core import bbox_xyxy_to_cxcywh
 from mmdet.models.utils.transformer import inverse_sigmoid
 
