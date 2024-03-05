@@ -70,7 +70,7 @@ sbatch compile.job
 ## run
 (local):
 ```bash
-tools/dist_train.sh projects/configs/execution/cmdha_12pt_nopos3d_1gpu2bs.py 1 --work-dir work_dirs/cmdha_12pt_nopos3d_1gpu2bs
+tools/dist_train.sh projects/configs/execution/cmdha_12ptdec_noenc_1gpu6bs.py 1 --work-dir work_dirs/cmdha_12ptdec_noenc_full_1gpu6bs
 ```
 
 (local, 2gpu):
@@ -89,7 +89,7 @@ GPUS_PER_NODE=2 MEM=160G ./tools/slurm_train.sh highprio mdha_12 2 ./projects/co
 GPUS_PER_NODE=4 MEM=160G ./tools/slurm_train.sh highprio mdha_12_nolimit 4 ./projects/configs/execution/cmdha_12pt_nolimit_4gpu16bs.py ./work_dirs/cmdha_12pt_nolimit_4gpu16bs_v2
 
 # 8 GPU
-NODES=2 CPUS_PER_TASK=12 GPUS_PER_NODE=4 MEM=160G ./tools/slurm_train.sh highprio mdha_r101 8 ./projects/configs/execution/cmdha_12pt_nolimit_4gpu16bs.py ./work_dirs/cmdha_12pt_nolimit_4gpu16bs_v2
+NODES=2 CPUS_PER_TASK=12 GPUS_PER_NODE=4 MEM=160G ./tools/slurm_train.sh highprio mdha_r101 8 ./projects/configs/execution/hpc/cmdha_r101_4ptenc_24ptdec_anchorref_updatepos_8gpu16bs.py ./work_dirs/cmdha_r101_4ptenc_24ptdec_anchorref_updatepos_8gpu16bs
 
 ## eval
 (local):
