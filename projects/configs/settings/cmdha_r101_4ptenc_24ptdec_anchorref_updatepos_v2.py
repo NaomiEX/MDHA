@@ -306,11 +306,11 @@ model = dict(
         depth=101,
         num_stages=4,
         frozen_stages=-1,
-        norm_eval=True,
+        norm_eval=False,
         style="pytorch",
         with_cp=True,
         out_indices=(0, 1, 2, 3),
-        norm_cfg=dict(type="BN2d", requires_grad=False),
+        norm_cfg=dict(type="BN", requires_grad=True),
         # pretrained="ckpt/resnet50-19c8e357.pth",
     ),
     img_neck=dict(
