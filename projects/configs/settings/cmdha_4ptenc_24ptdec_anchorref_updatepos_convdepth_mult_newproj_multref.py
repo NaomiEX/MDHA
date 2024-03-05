@@ -199,7 +199,7 @@ encoder = dict(
     **enc_obj_det3d_loss_cfg,
 )
 
-dec_ref_pts_mode = "single" # either single or multiple
+dec_ref_pts_mode = "multiple" # either single or multiple
 
 dn_args = dict(
     scalar=10, ##noise groups

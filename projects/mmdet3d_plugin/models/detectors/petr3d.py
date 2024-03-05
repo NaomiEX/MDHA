@@ -63,6 +63,9 @@ class Petr3D(MVXTwoStageDetector):
         if pts_bbox_head is not None:
             pts_bbox_head['pc_range'] = pc_range
 
+        # NOTE: important that this is placed BEFORE super() because ReferencePoints uses the class var of projections
+        self.projections = Projections(**projection_args)
+
         super(Petr3D, self).__init__(img_backbone=img_backbone, img_neck=img_neck, 
                                      pts_bbox_head=pts_bbox_head, train_cfg=train_cfg, 
                                      test_cfg=test_cfg, pretrained=pretrained)
@@ -112,9 +115,7 @@ class Petr3D(MVXTwoStageDetector):
         self.cached_locations=None
 
         ## build projections helper module
-        self.projections = Projections(**projection_args)
-        proj_mods = ["DepthNet", "IQTransformerEncoder", "PETRTransformerDecoder",
-                     "ReferencePoints"]
+        proj_mods = ["DepthNet", "IQTransformerEncoder", "PETRTransformerDecoder"]
         for m in self.modules():
             if any([type(m).__name__ == proj_mod for proj_mod in proj_mods]):
                 m.projections=self.projections

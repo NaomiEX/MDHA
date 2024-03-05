@@ -8,6 +8,7 @@ from mmcv.cnn.bricks.registry import PLUGIN_LAYERS
 from projects.mmdet3d_plugin.models.utils.misc import MLN
 from ..utils.misc import flatten_mlvl
 from ..utils.debug import *
+from ..utils.proj import Projections
 
 @PLUGIN_LAYERS.register_module()
 class ReferencePoints(BaseModule):
@@ -54,7 +55,7 @@ class ReferencePoints(BaseModule):
         elif self.coords_depth_type == "learnable":
             self.coords_depth = None
         
-        self.img_size = [self.projections.IMG_SIZE[1], self.projections.IMG_SIZE[0]] # [H, W]
+        self.img_size = [Projections.IMG_SIZE[1], Projections.IMG_SIZE[0]] # [H, W]
 
         self.cached_ref_pts_2d_norm = None
         self.cached_ref_pts_2p5d_unnorm = None

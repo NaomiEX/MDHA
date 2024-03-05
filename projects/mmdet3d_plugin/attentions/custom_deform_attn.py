@@ -5,10 +5,11 @@ import math
 import warnings
 import torch
 from torch import nn
+from mmcv.runner import Sequential
 from mmcv.cnn.bricks.registry import ATTENTION
 from projects.mmdet3d_plugin.attentions.ops.functions import MSDeformAttnFunction
 from projects.mmdet3d_plugin.models.utils.positional_encoding import posemb2d
-from projects.mmdet3d_plugin.models.utils.misc import MLN
+from projects.mmdet3d_plugin.models.utils.misc import MLN, linear_relu_ln
 from projects.mmdet3d_plugin.models.utils.debug import *
 
 from mmcv.runner.base_module import BaseModule
@@ -64,13 +65,17 @@ class CustomDeformAttn(BaseModule):
 
         if self.encode_2d_ref_pts_into_query_pos:
             self.query_pos_2d_ref_pts_encoding_method = query_pos_2d_ref_pts_encoding_method.lower()
-            assert self.query_pos_2d_ref_pts_encoding_method in ["mln", "linear"]
+            assert self.query_pos_2d_ref_pts_encoding_method in ["mln", "linear", "linearreluln"]
             if self.query_pos_2d_ref_pts_encoding_method == "mln":
                 self.query_pos_2d_ref_pts = MLN(self.embed_dims, f_dim=self.embed_dims)
             elif self.query_pos_2d_ref_pts_encoding_method == "linear":
                 self.query_pos_2d_ref_pts = nn.Sequential(
                     nn.Linear(self.embed_dims, self.embed_dims),
                     nn.LayerNorm(self.embed_dims)
+                )
+            elif self.query_pos_2d_ref_pts_encoding_method == "linearreluln":
+                self.query_pos_2d_ref_pts = Sequential(
+                    *linear_relu_ln(self.embed_dims, in_loops=1, out_loops=2, input_dims=2)
                 )
            
         self._is_init=test_mode
@@ -137,7 +142,7 @@ class CustomDeformAttn(BaseModule):
 
             if self.query_pos_2d_ref_pts_encoding_method == "mln":
                 query_pos = self.query_pos_2d_ref_pts(query_pos, ref_pts_2d_emb) # [B, Q, 256]
-            elif self.query_pos_2d_ref_pts_encoding_method == "linear":
+            elif self.query_pos_2d_ref_pts_encoding_method in ["linear", "linearreluln"]:
                 query_pos = query_pos+ self.query_pos_2d_ref_pts(ref_pts_2d_emb)
 
         if query_pos is not None:

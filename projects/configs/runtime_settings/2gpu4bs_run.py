@@ -11,6 +11,7 @@ num_epochs = 25
 BS_LR_MAP = {
     16: 4e-4,
     8: 2e-4,
+    4: 1e-4,
     2: 5e-5
 }
 optimizer = dict(
