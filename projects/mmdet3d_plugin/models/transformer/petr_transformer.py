@@ -25,7 +25,7 @@ import torch.utils.checkpoint as cp
 
 from mmcv.runner import auto_fp16
 
-from ..utils.projections import Projections, convert_3d_to_2d_global_cam_ref_pts, convert_3d_to_mult_2d_global_cam_ref_pts
+# from ..utils.projections import convert_3d_to_2d_global_cam_ref_pts, convert_3d_to_mult_2d_global_cam_ref_pts
 from ..utils.lidar_utils import denormalize_lidar, normalize_lidar, clamp_to_lidar_range, not_in_lidar_range
 from ..utils.positional_encoding import pos2posemb3d
 from projects.mmdet3d_plugin.attentions.custom_deform_attn import CustomDeformAttn
@@ -253,7 +253,7 @@ class PETRTransformerDecoder(TransformerLayerSequence):
         intermediate_reference_points = []
         intermediate_query_pos = []
 
-        cam_transformations = dict(lidar2img=lidar2img, lidar2cam=extrinsics)
+        # cam_transformations = dict(lidar2img=lidar2img, lidar2cam=extrinsics)
 
         for lid, layer in enumerate(self.layers):
             if self.limit_3d_pts_to_pc_range:
@@ -268,29 +268,36 @@ class PETRTransformerDecoder(TransformerLayerSequence):
                 init_reference_point = ref_pts_unnormalized.clone()
             # [B, Q, 2]
             with torch.no_grad():
+                outs = self.projections.convert_3d_to_2d_global_cam_ref_pts(
+                    lidar2imgs=lidar2img, lidar2cams=extrinsics, ref_pts_3d=ref_pts_unnormalized,
+                    orig_spatial_shapes=orig_spatial_shapes, ref_pts_mode=self.ref_pts_mode
+                )
                 if self.ref_pts_mode == "single":
-                    reference_points_2d_cam, _ = convert_3d_to_2d_global_cam_ref_pts(cam_transformations,
-                                                                        ref_pts_unnormalized, orig_spatial_shapes,
-                                                                        img_metas, ret_num_non_matches=True)
-                    
-                    
+                    reference_points_2d_cam, chosen_cams = outs
+                    # reference_points_2d_cam, _ = convert_3d_to_2d_global_cam_ref_pts(cam_transformations,
+                    #                                                     ref_pts_unnormalized, orig_spatial_shapes,
+                    #                                                     img_metas, ret_num_non_matches=True)
                     num_second_matches, second_matches_valid_idxs, idx_with_second_match = [None]*3
                 elif self.ref_pts_mode == "multiple":
-                    if do_debug_process(self): print("DECODER: USING MULTIPLE REF PTS")
-                    ref_pts_mult_outs = convert_3d_to_mult_2d_global_cam_ref_pts(cam_transformations,
-                                                                    ref_pts_unnormalized, orig_spatial_shapes,
-                                                                    img_metas, 
-                                                                    ret_num_non_matches=with_debug(self))
-                    reference_points_2d_cam, num_second_matches, second_matches_valid_idxs, idx_with_second_match = \
-                        ref_pts_mult_outs[:4]
+                    reference_points_2d_cam, chosen_cams, num_second_matches, \
+                        second_matches_valid_idxs, idx_with_second_match = outs
                     if do_debug_process(self, repeating=True):
-                        non_matches = ref_pts_mult_outs[4]
-                        num_non_match_prop = non_matches.sum(1) / non_matches.size(-1)
-                        num_second_matches_prop = second_matches_valid_idxs[1].size(0) / reference_points_2d_cam.size(1)
-                        debug_msg=f"3d->2d @ decoder layer {lid}, non matches prop.: {num_non_match_prop}, second match prop.: {num_second_matches_prop}"
                         print(f"num second matches @ decoder layer {lid}: {num_second_matches}")
-                        self.debug_logger.info(debug_msg)
-                        print(debug_msg)
+                    
+                    # ref_pts_mult_outs = convert_3d_to_mult_2d_global_cam_ref_pts(cam_transformations,
+                    #                                                 ref_pts_unnormalized, orig_spatial_shapes,
+                    #                                                 img_metas, 
+                    #                                                 ret_num_non_matches=with_debug(self))
+                    # reference_points_2d_cam, num_second_matches, second_matches_valid_idxs, idx_with_second_match = \
+                    #     ref_pts_mult_outs[:4]
+                    # if do_debug_process(self, repeating=True):
+                    #     non_matches = ref_pts_mult_outs[4]
+                    #     num_non_match_prop = non_matches.sum(1) / non_matches.size(-1)
+                    #     num_second_matches_prop = second_matches_valid_idxs[1].size(0) / reference_points_2d_cam.size(1)
+                    #     debug_msg=f"3d->2d @ decoder layer {lid}, non matches prop.: {num_non_match_prop}, second match prop.: {num_second_matches_prop}"
+                    #     print(f"num second matches @ decoder layer {lid}: {num_second_matches}")
+                    #     self.debug_logger.info(debug_msg)
+                    #     print(debug_msg)
 
             # query: [B, Q, C]
             # sampling_locs: [B, Q, n_heads, n_levels, n_points, 2]

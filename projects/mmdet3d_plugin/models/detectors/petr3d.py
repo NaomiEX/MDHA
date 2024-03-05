@@ -15,6 +15,7 @@ from projects.mmdet3d_plugin.models.utils.positional_encoding import posemb2d_fr
 from projects.mmdet3d_plugin.constants import *
 from ..utils.lidar_utils import normalize_lidar
 from ..utils.debug import *
+from ..utils.proj import Projections
 
 @DETECTORS.register_module()
 class Petr3D(MVXTwoStageDetector):
@@ -43,6 +44,8 @@ class Petr3D(MVXTwoStageDetector):
                  depth_net=None,
                  depth_pred_position=0,
                  calc_depth_pred_loss=True,
+                 ## projections
+                 projection_args=None,
                  ## debug
                  debug_args=None,
                  ):
@@ -107,6 +110,14 @@ class Petr3D(MVXTwoStageDetector):
             (self.depth_net is not None or (self.use_encoder and self.encoder.depth_net is not None))
 
         self.cached_locations=None
+
+        ## build projections helper module
+        self.projections = Projections(**projection_args)
+        proj_mods = ["DepthNet", "IQTransformerEncoder", "PETRTransformerDecoder",
+                     "ReferencePoints"]
+        for m in self.modules():
+            if any([type(m).__name__ == proj_mod for proj_mod in proj_mods]):
+                m.projections=self.projections
         
         ## debug init
         self.debug = Debug(**debug_args)

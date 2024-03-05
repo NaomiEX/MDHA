@@ -6,7 +6,6 @@ import warnings
 import torch
 from torch import nn
 from mmcv.cnn.bricks.registry import ATTENTION
-from ..models.utils.projections import Projections
 from projects.mmdet3d_plugin.attentions.ops.functions import MSDeformAttnFunction
 from projects.mmdet3d_plugin.models.utils.positional_encoding import posemb2d
 from projects.mmdet3d_plugin.models.utils.misc import MLN

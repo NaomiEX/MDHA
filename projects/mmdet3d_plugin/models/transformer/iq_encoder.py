@@ -16,7 +16,7 @@ from projects.mmdet3d_plugin.models.utils.positional_encoding import pos2posemb3
 from projects.mmdet3d_plugin.models.utils.misc import MLN, SELayer_Linear
 from projects.mmdet3d_plugin.core.bbox.util import normalize_bbox, clamp_to_rot_range
 from projects.mmdet3d_plugin.attentions.custom_deform_attn import CustomDeformAttn
-from ..utils.projections import convert_3d_to_2d_global_cam_ref_pts, Projections, project_to_matching_2point5d_cam_points
+# from ..utils.projections import convert_3d_to_2d_global_cam_ref_pts, Projections, project_to_matching_2point5d_cam_points
 from ..utils.mask_predictor import MaskPredictor
 from ..utils.lidar_utils import normalize_lidar, denormalize_lidar, clamp_to_lidar_range, not_in_lidar_range
 from ..utils.misc import flatten_mlvl, groupby_agg_mean
@@ -310,7 +310,7 @@ class IQTransformerEncoder(TransformerLayerSequence):
             img2lidar = torch.gather(img2lidar, 1, top_rho_inds[...,None,None].repeat(1, 1, *img2lidar.shape[-2:]))
             
             # [B, h0*N*w0+..., 3]
-            output_proposals = Projections.project_2p5d_cam_to_3d_lidar(ref_pts_2p5d_unnorm, img2lidar)
+            output_proposals = self.projections.project_2p5d_cam_to_3d_lidar(ref_pts_2p5d_unnorm, img2lidar)
   
             if do_debug_process(self, repeating=True, interval=500): 
                 prop_out_of_range=not_in_lidar_range(output_proposals, self.pc_range).sum().item()/output_proposals.numel()
@@ -375,28 +375,6 @@ class IQTransformerEncoder(TransformerLayerSequence):
         
         return enc_pred_dict, output
 
-
-    def assign_gt_bboxs_to_2d_grid_cells(self,gt_bboxes, lidar2img, lidar2cam, orig_spatial_shapes):
-        orig_h, orig_w = orig_spatial_shapes
-        # gt_bboxes: Tensor[n_objs, 10]
-        # lidar2img: Tensor[6, 4, 4]
-        # lidar2cam: Tensor[6, 4, 4]
-        gt_3d_xyz = gt_bboxes.unsqueeze(0)[..., :3]
-        point_2p5d_cam = Projections.project_lidar_points_to_all_2point5d_cams_batch(gt_3d_xyz, lidar2img.unsqueeze(0)).transpose(1,2) # [B, 6, n_objs, 2]
-        point_3d_cam = Projections.project_lidar_points_to_all_3d_cams_batch(gt_3d_xyz, lidar2cam.unsqueeze(0)).transpose(1, 2) # [B, 6, n_objs, 3]
-
-        in_front = point_3d_cam[..., 2] > 0
-        in_2d_range = (point_2p5d_cam[..., 0] >= 0) & (point_2p5d_cam[..., 0] < Projections.IMG_SIZE[0]) & \
-                    (point_2p5d_cam[..., 1] >= 0) & (point_2p5d_cam[..., 1] < Projections.IMG_SIZE[1])
-        matches = in_front & in_2d_range # [B, n_objs, 6]
-        # ! HUGE BUG: THE MAPPING OF GT BBOXES TO 2D POINTS NEEDS TO ACCOUNT WHICH CAM THE POINT GOT PROJECTED TO (SIMILAR TO convert_3d_to_mult_2d_global_cam_ref_pts IN projections.py)
-        # ! AND THE LABEL1D SHOULD BE GLOBAL, I.E. INSTEAD OF ORIG_W USE ORIG_W*NUM_CAMERAS
-        valid_2p5d_cam = point_2p5d_cam[matches] # [n_valid_objs, 3]
-        label1d = valid_2p5d_cam[..., 1] * orig_w + valid_2p5d_cam[..., 0]
-        label1d = label1d.long()
-        gt_depths = valid_2p5d_cam[..., 2:3] # Tensor[n_valid_objs, 1]
-        agg_depths = groupby_agg_mean(gt_depths, label1d, orig_w*orig_h).squeeze(-1) # [n_valid_objs]
-        return agg_depths
 
     
     def _get_target_single(self,

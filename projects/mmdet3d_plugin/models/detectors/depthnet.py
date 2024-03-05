@@ -8,7 +8,7 @@ from mmcv.runner.base_module import BaseModule
 from mmcv.cnn.resnet import BasicBlock
 from mmdet.core import multi_apply, reduce_mean
 from mmdet.models import build_loss
-from ..utils.projections import project_to_matching_2point5d_cam_points
+# from ..utils.projections import project_to_matching_2point5d_cam_points
 from projects.mmdet3d_plugin.constants import *
 from ..utils.debug import *
 
@@ -137,8 +137,9 @@ class DepthNet(BaseModule):
             cam_transformations=dict(lidar2img=lidar2img.unsqueeze(0), lidar2cam=lidar2cam.unsqueeze(0))
             # global_ref_pts: [n_matches, n_levels, 3]
             # ! WARNING: since a point can be projected to multiple cams, n_matches >= n_objs
-            global_2p5d_pts_norm = project_to_matching_2point5d_cam_points(gt_bbox_centers_3d, cam_transformations, 
-                                                                        orig_spatial_shapes, num_cameras=num_cameras)
+            global_2p5d_pts_norm = self.projections.project_to_matching_2point5d_cam_points(
+                gt_bbox_centers_3d, lidar2img.unsqueeze(0), lidar2cam.unsqueeze(0), 
+                orig_spatial_shapes, num_cameras=num_cameras)
             if global_2p5d_pts_norm.size(0) == 0: # no matches
                 all_depth_preds = ref_pts_2point5d_pred.new_tensor([])
                 all_target_depths=gt_bboxs_3d.new_tensor([]) # shape: [0]
