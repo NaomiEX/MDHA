@@ -221,5 +221,7 @@ def draw_lidar_bbox3d(bboxes_3d, imgs, lidar2imgs, color=(255, 0, 0), **kwargs):
         ], axis=0)
 
     bev = draw_lidar_bbox3d_on_bev(bboxes_3d, vis_imgs.shape[0], color=color)
+    bev[np.where((bev==[0,0,0]).all(axis=2))]=[255, 255, 255]
+
     vis_imgs = np.concatenate([bev, vis_imgs], axis=1)
     return vis_imgs

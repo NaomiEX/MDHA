@@ -414,10 +414,10 @@ class Petr3D(MVXTwoStageDetector):
             self.debug.iter += 1
             out= self.forward_train(**data)
         else:
-            # if 5000 > self.debug.iter > 300:
-            #     with open(f"./experiments/test_data/data_iter_{self.debug.iter}.pkl", "wb") as f:
+            # if 400 > self.debug.iter > 300:
+            #     with open(f"./experiments/test_data/data_iter_{self.debug.iter}_wfocal.pkl", "wb") as f:
             #         pickle.dump(data, f)
-            # if self.debug.iter > 5000:
+            # if self.debug.iter > 400:
             #     time.sleep(2)
             #     raise Exception()
             out= self.forward_test(viz=viz, **data)
