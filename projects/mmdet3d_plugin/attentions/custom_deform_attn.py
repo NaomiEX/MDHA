@@ -138,12 +138,12 @@ class CustomDeformAttn(BaseModule):
 
         if self.encode_2d_ref_pts_into_query_pos:
             if do_debug_process(self): print("ENCODING 2D REF PTS INTO MULTI QUERY")
-            ref_pts_2d_emb = posemb2d(reference_points[:,:, 0]) # [B, R, 256]
 
             if self.query_pos_2d_ref_pts_encoding_method == "mln":
+                ref_pts_2d_emb = posemb2d(reference_points[:,:, 0]) # [B, R, 256]
                 query_pos = self.query_pos_2d_ref_pts(query_pos, ref_pts_2d_emb) # [B, Q, 256]
             elif self.query_pos_2d_ref_pts_encoding_method in ["linear", "linearreluln"]:
-                query_pos = query_pos+ self.query_pos_2d_ref_pts(ref_pts_2d_emb)
+                query_pos = query_pos+ self.query_pos_2d_ref_pts(reference_points[:,:, 0])
 
         if query_pos is not None:
             assert query.shape == query_pos.shape
