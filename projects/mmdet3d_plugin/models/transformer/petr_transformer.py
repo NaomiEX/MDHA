@@ -305,7 +305,7 @@ class PETRTransformerDecoder(TransformerLayerSequence):
             query = layer(query, *args, query_pos=query_pos, reference_points=reference_points_2d_cam, 
                                 orig_spatial_shapes=orig_spatial_shapes, num_cameras=6, 
                                 num_second_matches=num_second_matches, second_matches_valid_idxs=second_matches_valid_idxs,
-                                idx_with_second_match=idx_with_second_match,
+                                idx_with_second_match=idx_with_second_match, chosen_cams=chosen_cams,
                                 **kwargs)
             # query_out = self.post_norm(query) if self.post_norm else query
             query_out=torch.nan_to_num(query)
@@ -451,6 +451,7 @@ class PETRTemporalDecoderLayer(BaseModule):
                 num_second_matches=None,
                 second_matches_valid_idxs=None,
                 idx_with_second_match=None,
+                chosen_cams=None,
                 ):
         norm_index = 0
         attn_index = 0
@@ -520,6 +521,7 @@ class PETRTemporalDecoderLayer(BaseModule):
                     num_second_matches=num_second_matches,
                     second_matches_valid_idxs=second_matches_valid_idxs,
                     idx_with_second_match=idx_with_second_match,
+                    chosen_cams=chosen_cams,
                     )
                 attn_index += 1
                 identity = query
@@ -550,6 +552,7 @@ class PETRTemporalDecoderLayer(BaseModule):
                 num_second_matches=None,
                 second_matches_valid_idxs=None,
                 idx_with_second_match=None,
+                chosen_cams=None,
                 ):
         """Forward function for `TransformerCoder`.
         Returns:
@@ -577,6 +580,7 @@ class PETRTemporalDecoderLayer(BaseModule):
                 num_second_matches,
                 second_matches_valid_idxs,
                 idx_with_second_match,
+                chosen_cams,
                 )
         else:
             x = self._forward(
@@ -598,6 +602,7 @@ class PETRTemporalDecoderLayer(BaseModule):
             num_second_matches,
             second_matches_valid_idxs,
             idx_with_second_match,
+            chosen_cams,
         )
         return x
 

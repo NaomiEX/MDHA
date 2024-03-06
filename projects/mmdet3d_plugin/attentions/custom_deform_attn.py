@@ -25,7 +25,7 @@ class CustomDeformAttn(BaseModule):
                  div_sampling_offset_x=False, mlvl_feats_format=0, 
                  ref_pts_mode="single", encode_2d_ref_pts_into_query_pos=False,
                  query_pos_2d_ref_pts_encoding_method="mln", test_mode=False,
-                 residual_mode="add",
+                 residual_mode="add", bound_sampling_locs=False,
                    **kwargs):
         super().__init__()
         if embed_dims % num_heads != 0:
@@ -77,7 +77,13 @@ class CustomDeformAttn(BaseModule):
                 self.query_pos_2d_ref_pts = Sequential(
                     *linear_relu_ln(self.embed_dims, in_loops=1, out_loops=2, input_dims=2)
                 )
-           
+        self.bound_sampling_locs=bound_sampling_locs
+        if bound_sampling_locs:
+            boundaries = torch.tensor([0.0, 1/6, 2/6, 3/6, 4/6, 5/6, 6/6])
+            rbound = boundaries[1:]
+            lbound = boundaries[:-1]
+            lrbound = torch.stack([lbound, rbound], -1)
+            self.boundaries = nn.Parameter(lrbound, requires_grad=False)
         self._is_init=test_mode
 
     @property
@@ -180,6 +186,7 @@ class CustomDeformAttn(BaseModule):
     def forward(self, query, value, key=None, identity=None, query_pos=None, key_pos=None, 
                 reference_points=None, spatial_shapes=None, flattened_spatial_shapes=None,
                 flattened_lvl_start_index=None, num_cameras=6, return_query_only=False,
+                chosen_cams=None,
                 **kwargs):
         assert self._is_init
 
@@ -217,6 +224,18 @@ class CustomDeformAttn(BaseModule):
         else:
             raise ValueError(
                 'Last dim of reference_points must be 2 or 4, but get {} instead.'.format(reference_points.shape[-1]))
+        
+        if self.bound_sampling_locs:
+            assert chosen_cams is not None
+            # chosen_cams: [B, R]
+            
+            chosen_bounds = self.boundaries.index_select(0, chosen_cams.flatten()).view([N, Len_q, 2])
+            # [B, R, n_heads, n_levels, n_points, 2]
+            chosen_bounds_exp = chosen_bounds[:, :, None, None, None]\
+                                .expand(-1, -1, self.num_heads, self.n_levels, self.n_points, -1)
+            sampling_locations[..., 0] = torch.clamp(sampling_locations[..., 0].clone(),
+                                                     min=chosen_bounds_exp[..., 0], max=chosen_bounds_exp[..., 1])
+
         assert sampling_locations.shape == sampling_offsets.shape
         if self.wrap_around:
             if do_debug_process(self): print(f"CDA: USING WRAP AROUND")
