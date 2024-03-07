@@ -128,7 +128,11 @@ class CustomDeformAttn(BaseModule):
             second_match_queries = query.new_zeros([B, num_second_matches, C])
             second_match_query_pos = second_match_queries.clone()
             second_match_queries[second_matches_valid_idxs] = query[idx_with_second_match]
+            if do_debug_process(self): 
+                print(f"CDA: using mult ref pts, original query size: {query.shape}")
             query = torch.cat([query, second_match_queries], 1) # [B, R, C]
+            if do_debug_process(self):
+                print(f"CDA: after preprocess query size: {query.shape}")
             second_match_query_pos[second_matches_valid_idxs] = query_pos[idx_with_second_match]
             query_pos = torch.cat([query_pos, second_match_query_pos], 1) # [B, R, C]
 
