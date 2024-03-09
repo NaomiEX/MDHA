@@ -5,4 +5,4 @@ _base_ = [
 ]
 
 debug_modules=['CustomDeformAttn', 'Projections', 'IQTransformerEncoder',
-               'AnchorRefinement', 'ReferencePoints', 'DepthNet']
+               'AnchorRefinement', 'ReferencePoints', 'DepthNet', "PETRTransformerDecoder"]
