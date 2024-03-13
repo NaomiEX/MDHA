@@ -227,6 +227,7 @@ class CustomDeformAttn(BaseModule):
         
         if self.bound_sampling_locs:
             assert chosen_cams is not None
+            if do_debug_process(self): print("CDA: BINDING SAMPLING LOCS")
             # chosen_cams: [B, R]
             
             chosen_bounds = self.boundaries.index_select(0, chosen_cams.flatten()).view([N, Len_q, 2])

@@ -38,4 +38,4 @@ checkpoint_config = dict(interval=num_iters_per_epoch, max_keep_ckpts=8)
 runner = dict(
     type='IterBasedRunner', max_iters=num_epochs * num_iters_per_epoch)
 load_from=None
-resume_from=None
+resume_from="work_dirs/cmdha_4ptenc_24ptdec_anchorref_convdepth_mult_updatepos_newproj_bind_1gpu2bs_25ep/latest.pth"
