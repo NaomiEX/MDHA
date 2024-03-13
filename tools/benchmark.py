@@ -23,6 +23,7 @@ def parse_args():
     parser.add_argument('--samples', default=300, help='samples to benchmark')
     parser.add_argument(
         '--log-interval', default=50, help='interval of logging')
+    parser.add_argument("--warmup", default=5)
     args = parser.parse_args()
     return args
 
@@ -91,7 +92,7 @@ def main():
     model.eval()
 
     # the first several iterations may be very slow so skip them
-    num_warmup = 5
+    num_warmup = args.warmup
     pure_inf_time = 0
 
     # benchmark with several samples and take the average
