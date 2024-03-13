@@ -95,6 +95,10 @@ def main():
     num_warmup = args.warmup
     pure_inf_time = 0
 
+    memory_allocated_all = []
+    memory_reserved_all = []
+    max_memory_reserved_all=[]
+
     # benchmark with several samples and take the average
     for i, data in enumerate(data_loader):
 
@@ -107,12 +111,26 @@ def main():
         torch.cuda.synchronize()
         elapsed = time.perf_counter() - start_time
 
+
         if i >= num_warmup:
             pure_inf_time += elapsed
+            after_memory_allocated=torch.cuda.memory_allocated(0)
+            after_memory_reserved=torch.cuda.memory_reserved(0)
+            after_max_memory_reserved=torch.cuda.max_memory_reserved(0)
+            memory_allocated_all.append(after_memory_allocated)
+            memory_reserved_all.append(after_memory_reserved)
+            max_memory_reserved_all.append(after_max_memory_reserved)
             if (i + 1) % args.log_interval == 0:
+                avg_mem_allocated = sum(memory_allocated_all) / (i+1-num_warmup)
+                avg_mem_reserved = sum(memory_reserved_all) / (i+1-num_warmup)
+                avg_max_mem_reserved = sum(max_memory_reserved_all) / (i+1-num_warmup)
                 fps = (i + 1 - num_warmup) / pure_inf_time
                 print(f'Done image [{i + 1:<3}/ {args.samples}], '
-                      f'fps: {fps:.1f} img / s')
+                      f'fps: {fps:.1f} img / s, '
+                      f'(mem allocated: {avg_mem_allocated:.6f}, '
+                      f'mem reserved: {avg_mem_reserved:.6f}, '
+                      f'max mem reserved: {avg_max_mem_reserved:.6f})'
+                      )
 
         if (i + 1) == args.samples:
             pure_inf_time += elapsed
