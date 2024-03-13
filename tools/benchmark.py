@@ -59,6 +59,14 @@ def main():
                     _module_path = _module_path + '.' + m
                 print(_module_path)
                 plg_lib = importlib.import_module(_module_path)
+
+    ## add samples_per_gpu=batch_size
+    cfg.data.setdefault("samples_per_gpu", cfg['batch_size'])
+    ## add debug args
+    if 'debug_modules' in cfg:
+        cfg['debug_args']['debug_modules'] = cfg.debug_modules
+        cfg.model.setdefault("debug_args", cfg['debug_args'])
+
     # build the dataloader
     # TODO: support multiple images per gpu (only minor changes are needed)
     dataset = build_dataset(cfg.data.test)
