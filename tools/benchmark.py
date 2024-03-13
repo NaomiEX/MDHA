@@ -20,10 +20,10 @@ def parse_args():
     parser = argparse.ArgumentParser(description='MMDet benchmark a model')
     parser.add_argument('config', help='test config file path')
     parser.add_argument('--checkpoint', help='checkpoint file')
-    parser.add_argument('--samples', default=300, help='samples to benchmark')
+    parser.add_argument('--samples', type=int, default=300, help='samples to benchmark')
     parser.add_argument(
         '--log-interval', default=50, help='interval of logging')
-    parser.add_argument("--warmup", default=5)
+    parser.add_argument("--warmup", type=int, default=5)
     args = parser.parse_args()
     return args
 
