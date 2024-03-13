@@ -37,4 +37,3 @@ checkpoint_config = dict(interval=num_iters_per_epoch, max_keep_ckpts=20)
 runner = dict(
     type='IterBasedRunner', max_iters=num_epochs * num_iters_per_epoch)
 load_from ="ckpt/cascade_mask_rcnn_r101_fpn_1x_nuim_20201024_134804-45215b1e.pth"
-resume_from=None
