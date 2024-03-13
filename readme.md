@@ -70,7 +70,7 @@ sbatch compile.job
 ## run
 (local):
 ```bash
-tools/dist_train.sh projects/configs/execution/cmdha_12pt_nopos3d_1gpu2bs.py 1 --work-dir work_dirs/cmdha_12pt_nopos3d_1gpu2bs
+tools/dist_train.sh projects/configs/execution/local/cmdha_4ptenc_24ptdec_anchorref_convdepth_mult_updatepos_newproj_bind_1gpu2bs_25ep.py 1 --work-dir work_dirs/cmdha_4ptenc_24ptdec_anchorref_convdepth_mult_updatepos_newproj_bind_1gpu2bs_25ep
 ```
 
 (local, 2gpu):
@@ -86,10 +86,20 @@ GPUS_PER_NODE=2 MEM=160G ./tools/slurm_train.sh highprio mdha_12 2 ./projects/co
 ```
 
 # 4 GPU
-GPUS_PER_NODE=4 MEM=160G ./tools/slurm_train.sh highprio mdha_12_nolimit 4 ./projects/configs/execution/cmdha_12pt_nolimit_4gpu16bs.py ./work_dirs/cmdha_12pt_nolimit_4gpu16bs_v2
+GPUS_PER_NODE=4 MEM=160G ./tools/slurm_train.sh highprio mdha_12_12_abl 4 ./projects/configs/execution/hpc/cmdha_12ptenc_12ptdec_anchorref_convdepth_mult_updatepos_4gpu16bs_25ep.py ./work_dirs/cmdha_12ptenc_12ptdec_anchorref_convdepth_mult_updatepos_4gpu16bs_25ep_stable
+
+# 8 GPU
+NODES=2 CPUS_PER_TASK=12 GPUS_PER_NODE=4 MEM=160G ./tools/slurm_train.sh highprio mdha_r101 8 ./projects/configs/execution/hpc/cmdha_r101_4ptenc_12ptdec_anchorref_updatepos_v3_lr3e-4_8gpu16bs.py ./work_dirs/cmdha_r101_4ptenc_12ptdec_anchorref_updatepos_v3_lr3e-4_8gpu16bs
 
 ## eval
 (local):
 ```bash
-tools/dist_test.sh ./projects/configs/execution_settings/sparse4dv3_r50_1gpu8bs.py work_dirs/test/latest.pth 1 --eval bbox
+tools/dist_test.sh ./projects/configs/execution_settings/cmdha_12pt_anchorref_convdepth_mult_updatepos_1gpu2bs.py work_dirs/from_hpc/cmdha_12pt_anchorref_convdepth_mult_updatepos_4gpu16bs/iter_165252.pth 1 --eval bbox
 ```
+
+(test all):
+(2 GPUS)
+./test_multiple.sh ./projects/configs/execution/local/cmdha_4ptenc_24ptdec_anchorref_convdepth_mult_updatepos_2gpu2bs.py work_dirs/from_hpc/cmdha_4ptenc_24ptdec_anchorref_convdepth_mult_updatepos_4gpu16bs_25ep/ 2
+
+## benchmark
+python tools/benchmark.py ./projects/configs/execution/local/cmdha_4ptenc_24ptdec_anchorref_convdepth_mult_updatepos_newproj_2gpu2bs.py --samples 300
