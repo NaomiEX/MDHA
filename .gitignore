@@ -19,6 +19,7 @@ metrics_comp.ipynb
 test/
 viz/
 .vscode/
+publish_results/
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
