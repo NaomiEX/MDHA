@@ -7,6 +7,7 @@
 import argparse
 import time
 import torch
+from memory_profiler import memory_usage
 from mmcv import Config
 from mmcv.parallel import MMDataParallel
 from mmcv.runner import load_checkpoint, wrap_fp16_model
@@ -98,6 +99,7 @@ def main():
     memory_allocated_all = []
     memory_reserved_all = []
     max_memory_reserved_all=[]
+    max_ram_all=[]
 
     # benchmark with several samples and take the average
     for i, data in enumerate(data_loader):
@@ -113,25 +115,29 @@ def main():
         torch.cuda.synchronize()
         elapsed = time.perf_counter() - start_time
 
-
         if i >= num_warmup:
             after_memory_allocated=torch.cuda.memory_allocated(0)
             after_memory_reserved=torch.cuda.memory_reserved(0)
             after_max_memory_reserved=torch.cuda.max_memory_reserved(0)
+            mem_usage = memory_usage((model,(),{"return_loss": False, "rescale":True, **data}))
+            max_ram_usage = max(mem_usage)
             memory_allocated_all.append(after_memory_allocated)
             memory_reserved_all.append(after_memory_reserved)
             max_memory_reserved_all.append(after_max_memory_reserved)
+            max_ram_all.append(max_ram_usage)
             pure_inf_time += elapsed
             if (i + 1) % args.log_interval == 0:
                 fps = (i + 1 - num_warmup) / pure_inf_time
                 avg_mem_allocated = sum(memory_allocated_all) / (i+1-num_warmup)
                 avg_mem_reserved = sum(memory_reserved_all) / (i+1-num_warmup)
                 avg_max_mem_reserved = sum(max_memory_reserved_all) / (i+1-num_warmup)
+                avg_max_ram_usage=sum(max_ram_all) / (i+1-num_warmup)
                 print(f'Done image [{i + 1:<3}/ {args.samples}], '
                       f'fps: {fps:.1f} img / s, '
-                      f'(mem allocated: {avg_mem_allocated/1e9:.3f}, '
-                      f'mem reserved: {avg_mem_reserved/1e9:.3f}, '
-                      f'max mem reserved: {avg_max_mem_reserved/1e9:.3f})'
+                      f'(mem allocated: {avg_mem_allocated:.3f}, '
+                      f'mem reserved: {avg_mem_reserved:.3f}, '
+                      f'max mem reserved: {avg_max_mem_reserved:.3f}, '
+                      f'avg max ram usage: {avg_max_ram_usage:.3f})'
                       )
 
         if (i + 1) == args.samples:
