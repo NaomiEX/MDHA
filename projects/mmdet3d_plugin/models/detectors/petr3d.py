@@ -398,14 +398,21 @@ class Petr3D(MVXTwoStageDetector):
 
     @force_fp32(apply_to=('img'))
     def forward(self, return_loss=True, viz=False, **data):
-        # with open("./experiments/data_forward_clean.pkl", "wb") as f:
+        # with open("./experiments/train_data_notrans.pkl", "wb") as f:
         #     pickle.dump(data, f)
         # time.sleep(5)
         # raise Exception()
         if return_loss:
+            rank, _=get_dist_info()
+            if self.debug.iter > 0:
+                with open(f"./experiments/train_data_notrans_trunc/timestamp_{data['timestamp'][0][0].item()}.pkl", "wb") as f:
+                    pickle.dump(data, f)
+            
+            if self.debug.iter == 10000:
+                time.sleep(5)
+                raise Exception("FINISHED!")
             for key in ['gt_bboxes_3d', 'gt_labels_3d', 'img_metas']:
                 data[key] = list(zip(*data[key]))
-            rank, _=get_dist_info()
             
             if do_debug_process(self, repeating=True):
                 print(f"GPU {rank} memory allocated: {torch.cuda.memory_allocated(rank)/1e9} GB")
@@ -420,6 +427,8 @@ class Petr3D(MVXTwoStageDetector):
             # if self.debug.iter > 400:
             #     time.sleep(2)
             #     raise Exception()
+            if 'rescale' not in data:
+                data['rescale']=True
             out= self.forward_test(viz=viz, **data)
             # ! REMOVE LATER
             self.debug.iter += 1

@@ -56,6 +56,8 @@ def custom_train_detector(model,
                 f'{cfg.data.imgs_per_gpu} in this experiments')
         cfg.data.samples_per_gpu = cfg.data.imgs_per_gpu
 
+    for i in range(50):
+        print("!! NOT SHUFFLING DATA THIS IS ONLY FOR VIZ !!")
     data_loaders = [
         build_dataloader(
             ds,
@@ -63,6 +65,7 @@ def custom_train_detector(model,
             cfg.data.workers_per_gpu,
             # cfg.gpus will be ignored if distributed
             len(cfg.gpu_ids),
+            shuffle=False,
             dist=distributed,
             seed=cfg.seed,
             shuffler_sampler=cfg.data.shuffler_sampler,  # dict(type='DistributedGroupSampler'),

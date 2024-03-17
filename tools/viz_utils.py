@@ -204,7 +204,8 @@ def draw_lidar_bbox3d_on_bev(
     return bev.astype(np.uint8)
 
 
-def draw_lidar_bbox3d(bboxes_3d, imgs, lidar2imgs, color=(255, 0, 0), **kwargs):
+def draw_lidar_bbox3d(bboxes_3d, imgs, lidar2imgs, color=(255, 0, 0),
+                      reverse=True, **kwargs):
     vis_imgs = []
     for i, (img, lidar2img) in enumerate(zip(imgs, lidar2imgs)):
         vis_imgs.append(
@@ -223,5 +224,8 @@ def draw_lidar_bbox3d(bboxes_3d, imgs, lidar2imgs, color=(255, 0, 0), **kwargs):
     bev = draw_lidar_bbox3d_on_bev(bboxes_3d, vis_imgs.shape[0], color=color)
     bev[np.where((bev==[0,0,0]).all(axis=2))]=[255, 255, 255]
 
-    vis_imgs = np.concatenate([bev, vis_imgs], axis=1)
+    if reverse:
+        vis_imgs = np.concatenate([vis_imgs, bev], axis=1)
+    else:
+        vis_imgs = np.concatenate([bev, vis_imgs], axis=1)
     return vis_imgs
