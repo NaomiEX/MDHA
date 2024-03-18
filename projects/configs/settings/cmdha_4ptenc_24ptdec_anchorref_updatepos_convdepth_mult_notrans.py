@@ -272,7 +272,7 @@ pts_bbox_head=dict(
                         ],
                     feedforward_channels=2048, # TODO: TRY WITH JUST 1024
                     ffn_dropout=0.1,
-                    with_cp=False,  ###use checkpoint to save memory
+                    with_cp=True,  ###use checkpoint to save memory
                     operation_order=('self_attn', 'norm', 'cross_attn', 'norm',
                                      'ffn', 'norm'),
                     batch_first=True,
@@ -311,7 +311,7 @@ model = dict(
         frozen_stages=-1,
         norm_eval=False,
         style="pytorch",
-        with_cp=False,
+        with_cp=True,
         out_indices=(0, 1, 2, 3),
         norm_cfg=dict(type="BN", requires_grad=True),
         pretrained="ckpt/resnet50-19c8e357.pth",
@@ -385,7 +385,7 @@ test_pipeline = [
         ])
 ]
 
-train_ann_filename='nuscenes2d_with_circular_cams_temporal_infos_train_trunc3900_4100.pkl'
+train_ann_filename='nuscenes2d_with_circular_cams_temporal_infos_train_trunc0_1000.pkl'
 val_ann_filename='nuscenes2d_with_circular_cams_temporal_infos_val.pkl'
 test_ann_filename='nuscenes2d_with_circular_cams_temporal_infos_val.pkl'
 val_data_root='./data/nuscenes/'
