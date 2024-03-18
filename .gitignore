@@ -1,6 +1,7 @@
 data/
 experiments/
 mmdetection3d/
+publish_results/
 work_dirs/
 *nuscenes*.ipynb
 *playground*.ipynb
@@ -18,6 +19,7 @@ reference_points_test.py
 metrics_comp.ipynb
 test/
 viz/
+*video/*
 .vscode/
 # Byte-compiled / optimized / DLL files
 __pycache__/
