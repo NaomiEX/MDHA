@@ -300,6 +300,7 @@ class PETRTransformerDecoder(TransformerLayerSequence):
                                 orig_spatial_shapes=orig_spatial_shapes, num_cameras=6, 
                                 num_second_matches=num_second_matches, second_matches_valid_idxs=second_matches_valid_idxs,
                                 idx_with_second_match=idx_with_second_match,
+                                save_attention=lid == self.num_layers-1, save_filename=img_metas["timestamp"],
                                 **kwargs)
             # query_out = self.post_norm(query) if self.post_norm else query
             query_out=torch.nan_to_num(query)
@@ -445,6 +446,8 @@ class PETRTemporalDecoderLayer(BaseModule):
                 num_second_matches=None,
                 second_matches_valid_idxs=None,
                 idx_with_second_match=None,
+                save_attention=False,
+                save_filename="",
                 ):
         norm_index = 0
         attn_index = 0
@@ -514,6 +517,8 @@ class PETRTemporalDecoderLayer(BaseModule):
                     num_second_matches=num_second_matches,
                     second_matches_valid_idxs=second_matches_valid_idxs,
                     idx_with_second_match=idx_with_second_match,
+                    save_attention=save_attention,
+                    save_filename=save_filename
                     )
                 attn_index += 1
                 identity = query
@@ -544,6 +549,8 @@ class PETRTemporalDecoderLayer(BaseModule):
                 num_second_matches=None,
                 second_matches_valid_idxs=None,
                 idx_with_second_match=None,
+                save_attention=False,
+                save_filename="",
                 ):
         """Forward function for `TransformerCoder`.
         Returns:
@@ -571,6 +578,8 @@ class PETRTemporalDecoderLayer(BaseModule):
                 num_second_matches,
                 second_matches_valid_idxs,
                 idx_with_second_match,
+                save_attention,
+                save_filename
                 )
         else:
             x = self._forward(
@@ -592,6 +601,8 @@ class PETRTemporalDecoderLayer(BaseModule):
             num_second_matches,
             second_matches_valid_idxs,
             idx_with_second_match,
+            save_attention,
+            save_filename
         )
         return x
 

@@ -4,6 +4,7 @@ from __future__ import division
 import math
 import warnings
 import torch
+import pickle
 from torch import nn
 from mmcv.cnn.bricks.registry import ATTENTION
 from ..models.utils.projections import Projections
@@ -176,6 +177,7 @@ class CustomDeformAttn(BaseModule):
     def forward(self, query, value, key=None, identity=None, query_pos=None, key_pos=None, 
                 reference_points=None, spatial_shapes=None, flattened_spatial_shapes=None,
                 flattened_lvl_start_index=None, num_cameras=6, return_query_only=False,
+                save_attention=False, save_filename="",
                 **kwargs):
         assert self._is_init
 
@@ -223,6 +225,12 @@ class CustomDeformAttn(BaseModule):
         
         assert list(attention_weights.shape) == [N, Len_q, self.num_heads, self.n_levels * self.n_points]
         attention_weights = F.softmax(attention_weights, -1).view(N, Len_q, self.num_heads, self.n_levels, self.n_points)
+
+        ## save attention
+        if save_attention:
+            attn = dict(reference_points=reference_points, sampling_locs=sampling_locations, attention_weights=attention_weights)
+            with open(f"./experiments/attention/{save_filename}.pkl", "wb") as f:
+                pickle.dump(attn, f)
 
         # [B, R, C]
         output = MSDeformAttnFunction.apply(

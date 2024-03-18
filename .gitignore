@@ -2,6 +2,9 @@ data/
 experiments/
 mmdetection3d/
 work_dirs/
+video/
+publish_results/
+viz_video.ipynb
 *nuscenes*.ipynb
 *playground*.ipynb
 viz.ipynb

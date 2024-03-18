@@ -203,6 +203,9 @@ class Petr3D(MVXTwoStageDetector):
             data_t[key] = data[key][:, i] 
 
         data_t['img_feats'] = [d[:, i] for d in data['img_feats']]
+
+        img_metas[0]['timestamp'] = data['timestamp'][0][0].item()
+
         loss = self.forward_pts_train(gt_bboxes_3d[i], gt_labels_3d[i], img_metas[i], 
                                       return_losses=True, **data_t)
         return loss
