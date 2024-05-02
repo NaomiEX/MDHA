@@ -28,6 +28,8 @@ viz/
 __pycache__/
 *.py[cod]
 *$py.class
+*.pdf
+*.mp4
 
 # C extensions
 *.so
