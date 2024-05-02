@@ -1,0 +1,23 @@
+#!/bin/bash
+
+#SBATCH --job-name=compile
+#SBATCH --mem=20G
+#SBATCH --ntasks=1
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=1
+#SBATCH --gres=gpu:a100:4
+#SBATCH --partition=highprio
+#SBATCH --output=compile.out
+
+module load anaconda/2022.05
+module add cuda/cudnn/8.4.1
+
+eval "$(conda shell.bash hook)"
+
+conda activate mdhav3
+
+python -c "import torch; print(torch.cuda.device_count())"
+
+
+cd projects/mmdet3d_plugin/attentions/ops/
+/bin/bash make.sh
