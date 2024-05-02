@@ -408,10 +408,10 @@ class Petr3D(MVXTwoStageDetector):
         if return_loss:
             rank, _=get_dist_info()
             if self.debug.iter > 0:
-                with open(f"./experiments/train_data_notrans_trunc/timestamp_{data['timestamp'][0][0].item()}.pkl", "wb") as f:
+                with open(f"./experiments/train_data_notrans_trunc_3900_4100/timestamp_{data['timestamp'][0][0].item()}.pkl", "wb") as f:
                     pickle.dump(data, f)
             
-            if self.debug.iter == 10000:
+            if self.debug.iter == 1000:
                 time.sleep(5)
                 raise Exception("FINISHED!")
             for key in ['gt_bboxes_3d', 'gt_labels_3d', 'img_metas']:
