@@ -2,6 +2,10 @@
 
 ### **[CURRENTLY UNDER REVIEW AT IROS 2024]**
 
+MDHA is a novel sparse query-based framework for 3D object detection which constructs adaptive 3D output proposals using hybrid anchors from multi-view,
+multi-scale input. Moreover, we propose a Circular Deformable Attention mechanism for efficient multi-view attention. Our model diagram is shown below:
+
+![Model Diagram](./imgs/model_diagram.png)
 
 ## Environment Setup
 Create a conda environment:
