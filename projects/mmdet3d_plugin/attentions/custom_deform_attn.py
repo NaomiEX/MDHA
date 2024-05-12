@@ -228,7 +228,7 @@ class CustomDeformAttn(BaseModule):
 
         ## save attention
         if save_attention:
-            attn = dict(reference_points=reference_points, sampling_locs=sampling_locations, attention_weights=attention_weights)
+            attn = dict(reference_points=reference_points[:,:,0], sampling_locs=sampling_locations, attention_weights=attention_weights)
             with open(f"./experiments/attention/{save_filename}.pkl", "wb") as f:
                 pickle.dump(attn, f)
 

@@ -204,8 +204,6 @@ class Petr3D(MVXTwoStageDetector):
 
         data_t['img_feats'] = [d[:, i] for d in data['img_feats']]
 
-        img_metas[0]['timestamp'] = data['timestamp'][0][0].item()
-
         loss = self.forward_pts_train(gt_bboxes_3d[i], gt_labels_3d[i], img_metas[i], 
                                       return_losses=True, **data_t)
         return loss
@@ -480,6 +478,8 @@ class Petr3D(MVXTwoStageDetector):
         """Test function of point cloud branch.
             - img_metas: List[B] with element img metas dict
         """
+        img_metas[0]['timestamp'] = data['timestamp'][0].item()
+
         # data['img_feats'] = [
         #       ([B, num_cams, 256, H/8, W/8]
         #        [B, num_cams, 256, H/16, W/16],
@@ -519,6 +519,10 @@ class Petr3D(MVXTwoStageDetector):
                                     ## the following two args are only for no-encoder cfg
                                     locations_flatten=locations_flattened, pos=pos_flatten,
                                     **data)
+            last_dec_out = dict(last_dec_cls_score=outs['all_cls_scores'][-1],
+                                last_dec_bbox_preds=outs['all_bbox_preds'][-1])
+            with open(f"./experiments/dec_outs/{img_metas[0]['timestamp']}.pkl","wb") as f:
+                pickle.dump(last_dec_out, f)
 
             bbox_list = self.pts_bbox_head.get_bboxes(outs, img_metas)
             bbox_results = [

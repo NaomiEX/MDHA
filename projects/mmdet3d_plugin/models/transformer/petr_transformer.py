@@ -300,7 +300,7 @@ class PETRTransformerDecoder(TransformerLayerSequence):
                                 orig_spatial_shapes=orig_spatial_shapes, num_cameras=6, 
                                 num_second_matches=num_second_matches, second_matches_valid_idxs=second_matches_valid_idxs,
                                 idx_with_second_match=idx_with_second_match,
-                                save_attention=lid == self.num_layers-1, save_filename=img_metas["timestamp"],
+                                save_attention=lid == self.num_layers-1, save_filename=img_metas[0]["timestamp"],
                                 **kwargs)
             # query_out = self.post_norm(query) if self.post_norm else query
             query_out=torch.nan_to_num(query)
