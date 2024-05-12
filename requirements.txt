@@ -1,3 +1,7 @@
+torch==1.9.0+cu111
+-f https://download.pytorch.org/whl/torch_stable.html
+torchvision==0.10.0+cu111
+-f https://download.pytorch.org/whl/torch_stable.html
 numba==0.53.0
 numpy==1.23.5
 nuscenes-devkit==1.1.11

@@ -459,10 +459,10 @@ class IQTransformerEncoder(TransformerLayerSequence):
             
         cls_avg_factor = max(cls_avg_factor, 1)
 
-        cls_info=dict(cls_scores=cls_scores, labels=labels, label_weights=label_weights,
-                      avg_factor=cls_avg_factor)
-        with open("./experiments/cls_info_iq.pkl", "wb") as f:
-            pickle.dump(cls_info, f)
+        # cls_info=dict(cls_scores=cls_scores, labels=labels, label_weights=label_weights,
+        #               avg_factor=cls_avg_factor)
+        # with open("./experiments/cls_info_iq.pkl", "wb") as f:
+        #     pickle.dump(cls_info, f)
 
         loss_cls = self.loss_cls(
             cls_scores, labels, label_weights, avg_factor=cls_avg_factor)
