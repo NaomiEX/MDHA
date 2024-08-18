@@ -4,5 +4,5 @@ _base_ = [
     "../../runtime_settings/debug.py"
 ]
 
-debug_modules=['CustomDeformAttn', 'Projections', 'AnchorEncoder',
+debug_modules=['CircularDeformAttn', 'Projections', 'AnchorEncoder',
                'AnchorRefinement', 'ReferencePoints']

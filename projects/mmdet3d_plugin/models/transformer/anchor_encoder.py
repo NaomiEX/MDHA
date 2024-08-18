@@ -10,7 +10,7 @@ from mmdet.models import build_loss
 from projects.mmdet3d_plugin.models.utils.positional_encoding import pos2posemb3d, pos2posemb1d
 from projects.mmdet3d_plugin.models.utils.misc import MLN, SELayer_Linear
 from projects.mmdet3d_plugin.core.bbox.util import normalize_bbox
-from projects.mmdet3d_plugin.attentions.custom_deform_attn import CustomDeformAttn
+from projects.mmdet3d_plugin.attentions.custom_deform_attn import CircularDeformAttn
 from ..utils.lidar_utils import normalize_lidar, clamp_to_lidar_range, not_in_lidar_range
 from ..utils.debug import *
 from ..utils.anchor_refine import AnchorRefinement
@@ -68,7 +68,7 @@ class AnchorEncoder(TransformerLayerSequence):
             transformerlayers=kwargs.get('transformerlayers')
             assert transformerlayers is not None
             for attn_cfg in transformerlayers['attn_cfgs']:
-                if attn_cfg['type'] == 'CustomDeformAttn':
+                if attn_cfg['type'] == 'CircularDeformAttn':
                     attn_cfg['test_mode'] = True
         self.bg_cls_weight = 0
         self.sync_cls_avg_factor = sync_cls_avg_factor
@@ -183,7 +183,7 @@ class AnchorEncoder(TransformerLayerSequence):
             if m == self: continue
             if isinstance(m, AnchorRefinement):
                 continue
-            if isinstance(m, CustomDeformAttn):
+            if isinstance(m, CircularDeformAttn):
                 # assert m.is_init == False
                 m.reset_parameters()
             elif hasattr(m, "init_weights"):

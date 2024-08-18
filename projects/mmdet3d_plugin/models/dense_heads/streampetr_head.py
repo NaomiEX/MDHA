@@ -130,7 +130,7 @@ class StreamPETRHead(AnchorFreeHead):
         if train_cfg is None:
             print("DECODER: !! IN TEST MODE !!")
             for attn_cfg in transformer['decoder']['transformerlayers']['attn_cfgs']:
-                if attn_cfg['type'] == 'CustomDeformAttn':
+                if attn_cfg['type'] == 'CircularDeformAttn':
                     attn_cfg['test_mode'] = True
         super(StreamPETRHead, self).__init__(num_classes, embed_dims, init_cfg = init_cfg)
 

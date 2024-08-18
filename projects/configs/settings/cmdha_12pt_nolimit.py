@@ -151,7 +151,7 @@ encoder = dict(
         batch_first=True,
         attn_cfgs=[
             dict(
-                type="CustomDeformAttn",
+                type="CircularDeformAttn",
                 embed_dims=256,
                 num_heads=8,
                 proj_drop=0.1,
@@ -221,7 +221,7 @@ pts_bbox_head=dict(
                             attn_drop=0.1,
                             proj_drop=0.1),
                         dict(
-                            type="CustomDeformAttn",
+                            type="CircularDeformAttn",
                             embed_dims=256,
                             num_heads=8,
                             proj_drop=0.1,

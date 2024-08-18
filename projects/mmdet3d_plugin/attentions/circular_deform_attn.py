@@ -19,7 +19,7 @@ import torch.nn.functional as F
 from torch.nn.init import xavier_uniform_, constant_
 
 @ATTENTION.register_module()
-class CustomDeformAttn(BaseModule):
+class CircularDeformAttn(BaseModule):
     def __init__(self, embed_dims, num_heads, proj_drop=0.0, 
                  n_levels=4, n_points=4*6, with_wrap_around=False, key_weight_modulation=False, 
                  div_sampling_offset_x=False, mlvl_feats_format=0, 
@@ -57,7 +57,6 @@ class CustomDeformAttn(BaseModule):
             raise ValueError("not using key weight modulation rn")
         self.div_sampling_offset_x=div_sampling_offset_x
         self.mlvl_feats_format=mlvl_feats_format
-        # self.allow_multi_point=allow_multi_point
         self.ref_pts_mode=ref_pts_mode.lower()
         assert self.ref_pts_mode in ["single", "multiple"]
 
@@ -152,7 +151,6 @@ class CustomDeformAttn(BaseModule):
         if query_pos is not None:
             assert query.shape == query_pos.shape
             query = query + query_pos
-        # assert key_pos is not None
         if key_pos is not None:
             assert key is not None
             key=key+key_pos
@@ -174,7 +172,6 @@ class CustomDeformAttn(BaseModule):
 
             out_main = output[:, :-num_second_matches] # [B, Q, C]
             out_second = output[:, -num_second_matches:]
-            # TODO: RIGHT NOW JUST AVERAGES OVER RESULTS OF PROJECTED POINTS TRY OTHER METHODS OF COMBINING THEM
             out_main[idx_with_second_match] = (out_main[idx_with_second_match] + out_second[second_matches_valid_idxs]) / 2
             return out_main
         else:
