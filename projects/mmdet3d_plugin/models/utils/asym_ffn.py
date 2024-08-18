@@ -1,19 +1,10 @@
-from typing import List, Optional, Tuple
-
-import numpy as np
 import torch
 import torch.nn as nn
-from torch.cuda.amp.autocast_mode import autocast
 
 from mmcv.cnn import Linear, build_activation_layer, build_norm_layer
 from mmcv.runner.base_module import Sequential, BaseModule
-from mmcv.cnn.bricks.transformer import FFN
-from mmcv.utils import build_from_cfg
 from mmcv.cnn.bricks.drop import build_dropout
-from mmcv.cnn import xavier_init, constant_init
-from mmcv.cnn.bricks.registry import (
-    FEEDFORWARD_NETWORK,
-)
+from mmcv.cnn.bricks.registry import FEEDFORWARD_NETWORK
 
 @FEEDFORWARD_NETWORK.register_module()
 class AsymmetricFFN(BaseModule):
@@ -75,7 +66,6 @@ class AsymmetricFFN(BaseModule):
             )
 
     def forward(self, x, identity=None):
-        # print("ASYMFFN")
         if self.pre_norm is not None:
             x = self.pre_norm(x)
         out = self.layers(x)

@@ -1,6 +1,5 @@
 import torch
 from torch import nn
-from torch.nn.init import constant_, xavier_uniform_
 from mmcv.cnn.bricks.registry import PLUGIN_LAYERS
 from mmcv.runner import BaseModule
 from mmdet.models.utils.transformer import inverse_sigmoid

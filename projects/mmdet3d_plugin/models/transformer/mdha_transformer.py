@@ -1,13 +1,8 @@
-from copy import deepcopy
 import warnings
 import torch
-# import numpy as np
 import torch.nn as nn
-import torch.nn.functional as F
 
-from mmcv.cnn import Linear, bias_init_with_prob
-from mmcv.cnn.bricks.transformer import (BaseTransformerLayer,
-                                         TransformerLayerSequence,
+from mmcv.cnn.bricks.transformer import (TransformerLayerSequence,
                                          build_transformer_layer_sequence,
                                          build_attention,
                                          build_feedforward_network)
@@ -25,8 +20,7 @@ import torch.utils.checkpoint as cp
 
 from mmcv.runner import auto_fp16
 
-# from ..utils.projections import convert_3d_to_2d_global_cam_ref_pts, convert_3d_to_mult_2d_global_cam_ref_pts
-from ..utils.lidar_utils import denormalize_lidar, normalize_lidar, clamp_to_lidar_range, not_in_lidar_range
+from ..utils.lidar_utils import denormalize_lidar
 from ..utils.positional_encoding import pos2posemb3d
 from projects.mmdet3d_plugin.attentions.custom_deform_attn import CustomDeformAttn
 from projects.mmdet3d_plugin.models.utils.debug import *

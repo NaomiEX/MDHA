@@ -1,7 +1,7 @@
 import torch
 import torch.nn.functional as F
 from torch import nn
-from torch.nn.init import constant_, xavier_uniform_
+from torch.nn.init import xavier_uniform_
 from .dam import attn_map_to_flat_grid
 from mmcv.cnn.bricks.registry import PLUGIN_LAYERS
 from mmcv.runner import BaseModule
@@ -37,10 +37,6 @@ class MaskPredictor(BaseModule):
     def init_weights(self):
         for name, param in self.named_parameters():
             if param.requires_grad and param.dim() > 1:
-                # param_type = name.split('.')[-1]
-                # if param_type == 'bias':
-                #     constant_(param, 0.)
-                # else:
                 xavier_uniform_(param)
 
     def forward(self, x):
@@ -81,7 +77,6 @@ class MaskPredictor(BaseModule):
         # with torch.no_grad():
         flat_grid_attn_map = attn_map_to_flat_grid(flattened_spatial_shapes, flattened_level_start_index,
                                                     sampling_locations, attn_weights, sum_out=True)
-        # flat_grid_attn_map_dec=flat_grid_attn_map_dec.sum(dim=(1,2)) # [B, h0*N*w0+...]
         topk_idx_tgt = torch.topk(flat_grid_attn_map, sparse_token_nums, dim=-1)[1] # [B, p]
         if self.loss_type == "multilabel_soft_margin_loss":
             target = torch.zeros_like(mask_prediction) # [B, h0*N*w0+...]

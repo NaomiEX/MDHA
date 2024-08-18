@@ -35,8 +35,6 @@ def linear_relu_ln(embed_dims, in_loops, out_loops, input_dims=None):
         layers.append(nn.LayerNorm(embed_dims))
     return layers
 
-
-
 def apply_ltrb(locations, pred_ltrb): 
         """
         :param locations:  (B, N, H, W, 2)

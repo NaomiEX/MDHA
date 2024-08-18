@@ -1,11 +1,8 @@
 import pickle
 import torch
 from torch import nn
-from copy import deepcopy
 from mmcv.runner import BaseModule
 from mmcv.cnn.bricks.registry import PLUGIN_LAYERS
-# from .projections import Projections
-from projects.mmdet3d_plugin.models.utils.misc import MLN
 from ..utils.misc import flatten_mlvl
 from ..utils.debug import *
 from ..utils.proj import Projections
@@ -38,7 +35,6 @@ class ReferencePoints(BaseModule):
                     with open(coords_depth_files[lvl], "rb") as f:
                         cam_depths = pickle.load(f)
                     if coords_depth_file_format == "xy": # convert to y,x format
-                        # cam_depths = [d.T for d in cam_depths]
                         cam_depths = [torch.clamp(d.T, min=depth_start, max=depth_max) for d in cam_depths]
                     setattr(self, f"cam_depths_lvl{lvl}", nn.Parameter(
                         torch.stack(cam_depths), requires_grad=coords_depth_grad
