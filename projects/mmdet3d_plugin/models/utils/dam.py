@@ -1,3 +1,5 @@
+# Modified from Sparse DETR
+
 import torch
 
 def attn_map_to_flat_grid_multiple(spatial_shapes, level_start_index, 

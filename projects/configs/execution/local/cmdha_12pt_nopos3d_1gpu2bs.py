@@ -4,4 +4,4 @@ _base_ = [
     "../../runtime_settings/debug.py"
 ]
 
-debug_modules=['Petr3D', 'CustomDeformAttn', 'Projections', 'AnchorEncoder']
+debug_modules=['MDHA', 'CustomDeformAttn', 'Projections', 'AnchorEncoder']

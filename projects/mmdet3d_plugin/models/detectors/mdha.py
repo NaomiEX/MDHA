@@ -1,7 +1,7 @@
 import time
 import torch
 from torch import nn
-from torch.nn.init import xavier_uniform_, constant_
+from torch.nn.init import xavier_uniform_
 
 from mmcv.runner import force_fp32, auto_fp16, get_dist_info
 from mmcv.cnn.bricks.transformer import build_transformer_layer_sequence
@@ -10,7 +10,6 @@ from mmdet.models import DETECTORS
 from mmdet3d.core import bbox3d2result
 from mmdet3d.models.detectors.mvx_two_stage import MVXTwoStageDetector
 from projects.mmdet3d_plugin.models.utils.grid_mask import GridMask
-from projects.mmdet3d_plugin.models.utils.misc import locations
 from projects.mmdet3d_plugin.models.utils.positional_encoding import posemb2d_from_spatial_shapes
 from projects.mmdet3d_plugin.constants import *
 from ..utils.lidar_utils import normalize_lidar
@@ -18,8 +17,8 @@ from ..utils.debug import *
 from ..utils.proj import Projections
 
 @DETECTORS.register_module()
-class Petr3D(MVXTwoStageDetector):
-    """Petr3D."""
+class MDHA(MVXTwoStageDetector):
+    """MDHA architecture."""
 
     def __init__(self,
                  use_grid_mask=False,
@@ -67,7 +66,7 @@ class Petr3D(MVXTwoStageDetector):
         if projection_args is not None:
             self.projections = Projections(**projection_args)
 
-        super(Petr3D, self).__init__(img_backbone=img_backbone, img_neck=img_neck, 
+        super(MDHA, self).__init__(img_backbone=img_backbone, img_neck=img_neck, 
                                      pts_bbox_head=pts_bbox_head, train_cfg=train_cfg, 
                                      test_cfg=test_cfg, pretrained=pretrained)
 
@@ -412,11 +411,6 @@ class Petr3D(MVXTwoStageDetector):
     def forward(self, return_loss=True, **data):
         if return_loss:
             rank, _=get_dist_info()
-            # if rank == 0:
-            #     with open("./experiments/data_forward_bs1.pkl", "wb") as f:
-            #         pickle.dump(data, f)
-            #     time.sleep(2)
-            #     raise Exception()
             for key in ['gt_bboxes_3d', 'gt_labels_3d', 'img_metas']:
                 data[key] = list(zip(*data[key]))
             

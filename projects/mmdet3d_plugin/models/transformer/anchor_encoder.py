@@ -18,7 +18,6 @@ from ..utils.positional_encoding import pos2posemb3d
 
 @TRANSFORMER_LAYER_SEQUENCE.register_module()
 class AnchorEncoder(TransformerLayerSequence):
-    # modified from SparseDETR
     def __init__(self, 
                  *args,
                  code_size=10, 

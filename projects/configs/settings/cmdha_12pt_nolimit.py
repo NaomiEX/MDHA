@@ -107,7 +107,7 @@ position_embedding_3d = dict(
     position_range=[-61.2, -61.2, -10.0, 61.2, 61.2, 10.0], 
     use_inv_sigmoid_in_pos_embed=True,
     use_norm_input_in_pos_embed=False,
-    flattened_inp=spatial_alignment!="petr3d"
+    flattened_inp=spatial_alignment!="mdha"
 )
 
 # NOTE: the encoder config is from encoder_anchor_fixedfull_xyrefptsqencoding_1gpu
@@ -116,7 +116,7 @@ encoder = dict(
     num_layers=1,
     mlvl_feats_formats=mlvl_feats_format,
     limit_3d_pts_to_pc_range=limit_3d_pts_to_pc_range,
-    # pc range is set by petr3d
+    # pc range is set by mdha
     learn_ref_pts_type="anchor",
     use_spatial_alignment=spatial_alignment == "encoder",
     pos_embed3d= position_embedding_3d if pos_embed3d == "encoder" else None,
@@ -254,7 +254,7 @@ pts_bbox_head=dict(
 
     # model training and testing settings
 model = dict(
-    type='Petr3D',
+    type='MDHA',
     num_frame_backbone_grads=num_frame_losses,
     strides=strides,
     use_grid_mask=True,
