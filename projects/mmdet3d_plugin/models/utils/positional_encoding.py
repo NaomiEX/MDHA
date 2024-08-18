@@ -6,10 +6,11 @@
 # ------------------------------------------------------------------------
 #  Modified by Shihao Wang
 # ------------------------------------------------------------------------
+#  Modified by Michelle Adeline
+# ------------------------------------------------------------------------
+
 import math
 import torch
-import torch.nn as nn 
-import numpy as np
 
 def posemb2d_from_spatial_shapes(flattened_hw, device, batch_size, normalize=True, num_pos_feats=128, temperature=10000):
     H, W = flattened_hw

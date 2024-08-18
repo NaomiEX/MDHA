@@ -3,6 +3,7 @@
 # ---------------------------------------------
 #  Modified by Zhiqi Li
 # ---------------------------------------------
+# Modified by Michelle Adeline
  
 from __future__ import division
 
@@ -14,7 +15,7 @@ import time
 import torch
 import warnings
 from mmcv import Config, DictAction
-from mmcv.runner import get_dist_info, init_dist, wrap_fp16_model
+from mmcv.runner import get_dist_info, init_dist
 from os import path as osp
 
 from mmdet import __version__ as mmdet_version
@@ -271,5 +272,4 @@ def main():
 if __name__ == '__main__':
     import os
     torch.multiprocessing.set_start_method('fork', force=True)
-    # os.environ["TORCH_DISTRIBUTED_DEBUG"] = "INFO"
     main()

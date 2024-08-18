@@ -1,4 +1,6 @@
 # Copyright (c) OpenMMLab. All rights reserved.
+# ---------------------------------------------
+# Modified by Michelle Adeline
 import os
 from collections import OrderedDict
 from os import path as osp

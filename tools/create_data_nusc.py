@@ -1,10 +1,11 @@
 # Copyright (c) OpenMMLab. All rights reserved.
+# ---------------------------------------------
+# Modified by Michelle Adeline
+
 import argparse
 from os import path as osp
 
 from data_converter import nuscenes_converter as nuscenes_converter
-
-
 
 def nuscenes_data_prep(root_path,
                        info_prefix,
