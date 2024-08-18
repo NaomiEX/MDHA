@@ -4,4 +4,4 @@ _base_ = [
     "../../runtime_settings/debug.py"
 ]
 
-debug_modules=['MDHA', 'CustomDeformAttn', 'Projections', 'IQTransformerEncoder']
+debug_modules=['MDHA', 'CustomDeformAttn', 'Projections', 'AnchorEncoder']

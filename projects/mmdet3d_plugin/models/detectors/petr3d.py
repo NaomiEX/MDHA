@@ -117,7 +117,7 @@ class Petr3D(MVXTwoStageDetector):
 
         ## build projections helper module
         if projection_args is not None:
-            proj_mods = ["DepthNet", "IQTransformerEncoder", "PETRTransformerDecoder"]
+            proj_mods = ["DepthNet", "AnchorEncoder", "MDHATransformerDecoder"]
             for m in self.modules():
                 if any([type(m).__name__ == proj_mod for proj_mod in proj_mods]):
                     m.projections=self.projections

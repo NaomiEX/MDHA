@@ -51,7 +51,7 @@ class MultiheadAttentionWrapper(nn.MultiheadAttention):
             return self.forward_fp32( *args, **kwargs)
 
 @ATTENTION.register_module()
-class PETRMultiheadAttention(BaseModule):
+class MDHAMultiheadAttention(BaseModule):
 
     def __init__(self,
                  embed_dims,
@@ -63,7 +63,7 @@ class PETRMultiheadAttention(BaseModule):
                  batch_first=False,
                  fp16 = False,
                  **kwargs):
-        super(PETRMultiheadAttention, self).__init__(init_cfg)
+        super(MDHAMultiheadAttention, self).__init__(init_cfg)
         if 'dropout' in kwargs:
             warnings.warn(
                 'The arguments `dropout` in MultiheadAttention '
@@ -134,10 +134,10 @@ class PETRMultiheadAttention(BaseModule):
         return identity + self.dropout_layer(self.proj_drop(out))
 
 @TRANSFORMER.register_module()
-class PETRTemporalTransformer(BaseModule):
+class MDHATemporalTransformer(BaseModule):
 
     def __init__(self, encoder=None, decoder=None, init_cfg=None, two_stage=False):
-        super(PETRTemporalTransformer, self).__init__(init_cfg=init_cfg)
+        super(MDHATemporalTransformer, self).__init__(init_cfg=init_cfg)
         if encoder is not None:
             self.encoder = build_transformer_layer_sequence(encoder)
         else:
@@ -199,7 +199,7 @@ class PETRTemporalTransformer(BaseModule):
         return outs_decoder
 
 @TRANSFORMER_LAYER_SEQUENCE.register_module()
-class PETRTransformerDecoder(TransformerLayerSequence):
+class MDHATransformerDecoder(TransformerLayerSequence):
     """Implements the decoder in DETR transformer.
     Args:
         return_intermediate (bool): Whether to return intermediate outputs.
@@ -220,7 +220,7 @@ class PETRTransformerDecoder(TransformerLayerSequence):
                  limit_3d_pts_to_pc_range=False,
                  update_pos=False,
                  **kwargs):
-        super(PETRTransformerDecoder, self).__init__(*args, **kwargs)
+        super(MDHATransformerDecoder, self).__init__(*args, **kwargs)
         self.limit_3d_pts_to_pc_range=limit_3d_pts_to_pc_range
         self.update_pos=update_pos
         if update_pos:
@@ -253,8 +253,6 @@ class PETRTransformerDecoder(TransformerLayerSequence):
         intermediate_reference_points = []
         intermediate_query_pos = []
 
-        # cam_transformations = dict(lidar2img=lidar2img, lidar2cam=extrinsics)
-
         for lid, layer in enumerate(self.layers):
             if self.limit_3d_pts_to_pc_range:
                 if self.use_inv_sigmoid:
@@ -274,30 +272,12 @@ class PETRTransformerDecoder(TransformerLayerSequence):
                 )
                 if self.ref_pts_mode == "single":
                     reference_points_2d_cam, chosen_cams = outs
-                    # reference_points_2d_cam, _ = convert_3d_to_2d_global_cam_ref_pts(cam_transformations,
-                    #                                                     ref_pts_unnormalized, orig_spatial_shapes,
-                    #                                                     img_metas, ret_num_non_matches=True)
                     num_second_matches, second_matches_valid_idxs, idx_with_second_match = [None]*3
                 elif self.ref_pts_mode == "multiple":
                     reference_points_2d_cam, chosen_cams, num_second_matches, \
                         second_matches_valid_idxs, idx_with_second_match = outs
                     if do_debug_process(self, repeating=True):
                         print(f"num second matches @ decoder layer {lid}: {num_second_matches}")
-                    
-                    # ref_pts_mult_outs = convert_3d_to_mult_2d_global_cam_ref_pts(cam_transformations,
-                    #                                                 ref_pts_unnormalized, orig_spatial_shapes,
-                    #                                                 img_metas, 
-                    #                                                 ret_num_non_matches=with_debug(self))
-                    # reference_points_2d_cam, num_second_matches, second_matches_valid_idxs, idx_with_second_match = \
-                    #     ref_pts_mult_outs[:4]
-                    # if do_debug_process(self, repeating=True):
-                    #     non_matches = ref_pts_mult_outs[4]
-                    #     num_non_match_prop = non_matches.sum(1) / non_matches.size(-1)
-                    #     num_second_matches_prop = second_matches_valid_idxs[1].size(0) / reference_points_2d_cam.size(1)
-                    #     debug_msg=f"3d->2d @ decoder layer {lid}, non matches prop.: {num_non_match_prop}, second match prop.: {num_second_matches_prop}"
-                    #     print(f"num second matches @ decoder layer {lid}: {num_second_matches}")
-                    #     self.debug_logger.info(debug_msg)
-                    #     print(debug_msg)
 
             # query: [B, Q, C]
             # sampling_locs: [B, Q, n_heads, n_levels, n_points, 2]
@@ -307,11 +287,8 @@ class PETRTransformerDecoder(TransformerLayerSequence):
                                 num_second_matches=num_second_matches, second_matches_valid_idxs=second_matches_valid_idxs,
                                 idx_with_second_match=idx_with_second_match,
                                 **kwargs)
-            # query_out = self.post_norm(query) if self.post_norm else query
             query_out=torch.nan_to_num(query)
             
-            # cls_pred = self.cls_branches[lid](query_out)
-            # TODO: integrate query pos
             reg_out, _ = anchor_refinements[lid](query_out, ref_pts_unnormalized, query_pos=query_pos, return_cls=False) # [B, Q, 10]
             reference_points = unnormalized_ref_pts = reg_out[..., :3].detach().clone()
 
@@ -331,7 +308,7 @@ class PETRTransformerDecoder(TransformerLayerSequence):
             torch.stack(intermediate_query_pos) , init_reference_point
 
 @TRANSFORMER_LAYER.register_module()
-class PETRTemporalDecoderLayer(BaseModule):
+class MDHATemporalDecoderLayer(BaseModule):
     
     def __init__(self,
                  attn_cfgs=None,

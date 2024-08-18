@@ -1,31 +1,23 @@
 import torch
-import os
-import pickle
-import copy
-import numpy as np
 from torch import nn
-import torch.nn.functional as F
-from mmcv.cnn import Linear, xavier_init, build_norm_layer, bias_init_with_prob
+from mmcv.cnn import build_norm_layer
 from mmcv.cnn.bricks.transformer import (TransformerLayerSequence, BaseTransformerLayer, 
                                          TRANSFORMER_LAYER_SEQUENCE, TRANSFORMER_LAYER)
 from mmcv.cnn.bricks.plugin import build_plugin_layer
 from mmdet.core import (build_assigner, build_sampler, multi_apply,
                         reduce_mean)
-from mmdet.models import HEADS, build_loss
-from projects.mmdet3d_plugin.models.utils.positional_encoding import pos2posemb3d, pos2posemb1d, nerf_positional_encoding, posemb2d
+from mmdet.models import build_loss
+from projects.mmdet3d_plugin.models.utils.positional_encoding import pos2posemb3d, pos2posemb1d
 from projects.mmdet3d_plugin.models.utils.misc import MLN, SELayer_Linear
-from projects.mmdet3d_plugin.core.bbox.util import normalize_bbox, clamp_to_rot_range
+from projects.mmdet3d_plugin.core.bbox.util import normalize_bbox
 from projects.mmdet3d_plugin.attentions.custom_deform_attn import CustomDeformAttn
-# from ..utils.projections import convert_3d_to_2d_global_cam_ref_pts, Projections, project_to_matching_2point5d_cam_points
-from ..utils.mask_predictor import MaskPredictor
-from ..utils.lidar_utils import normalize_lidar, denormalize_lidar, clamp_to_lidar_range, not_in_lidar_range
-from ..utils.misc import flatten_mlvl, groupby_agg_mean
+from ..utils.lidar_utils import normalize_lidar, clamp_to_lidar_range, not_in_lidar_range
 from ..utils.debug import *
 from ..utils.anchor_refine import AnchorRefinement
 from ..utils.positional_encoding import pos2posemb3d
 
 @TRANSFORMER_LAYER_SEQUENCE.register_module()
-class IQTransformerEncoder(TransformerLayerSequence):
+class AnchorEncoder(TransformerLayerSequence):
     # modified from SparseDETR
     def __init__(self, 
                  *args,
@@ -82,7 +74,7 @@ class IQTransformerEncoder(TransformerLayerSequence):
         self.bg_cls_weight = 0
         self.sync_cls_avg_factor = sync_cls_avg_factor
 
-        super(IQTransformerEncoder, self).__init__(*args, **kwargs)
+        super(AnchorEncoder, self).__init__(*args, **kwargs)
 
         self.use_anchor_pos=use_anchor_pos
         if use_anchor_pos:
@@ -200,7 +192,6 @@ class IQTransformerEncoder(TransformerLayerSequence):
         
         self._is_init = True
 
-
     def get_reference_points(self, query, orig_spatial_shapes, depths=None, n_tokens=None, top_rho_inds=None):
         # depths: [B, h0*N*w0+..., 1] unnormalized depths
         
@@ -281,10 +272,6 @@ class IQTransformerEncoder(TransformerLayerSequence):
         query, pos, top_rho_inds, mask_pred = self.sparsify_inputs(src, pos, n_sparse_tokens) # M: 1.977 GB
 
         if depth_pred is None and self.depth_pred_position == 1 and self.depth_net is not None:
-            # TODO: predict depths here after spatial alignment
-            # TODO: try predicting depths not only with src but with src + pos
-            # TODO: explore ways to use multi-scale features meaningfully to predict depth
-            # TODO: explore using sparseconv
             if self.depth_net.depth_net_type in ["conv", "residual"] or not self.depth_net.shared:
                 depth_pred_inp = src+pos_orig
             else:
@@ -295,7 +282,6 @@ class IQTransformerEncoder(TransformerLayerSequence):
 
         ref_pts_out_props = self.get_reference_points(query, orig_spatial_shapes, depths=depth_pred, n_tokens=n_tokens, 
                                                       top_rho_inds=top_rho_inds if n_tokens != n_sparse_tokens else None) # M: 0.59GB
-        # ! TODO: ENCODE DEPTH CHOICE INTO QUERY POS
         if self.learn_ref_pts_type == "anchor":
             assert isinstance(ref_pts_out_props, (tuple, list)) and len(ref_pts_out_props) == 2
             reference_points_2d_cam_orig = ref_pts_out_props[0] # [B, h_0*N*w_0+..., 2]
@@ -337,10 +323,6 @@ class IQTransformerEncoder(TransformerLayerSequence):
             else:
                 raise Exception()
 
-        # TODO: IF NOT USING ITERATIVE BBOX REFINEMENT, CAN EXPERIMENT JUST USING FIXED REF PTS
-        # TODO(cont): NO NEED TO DO 3D LIDAR - 2D CAM PROJECTION AT ALL, JUST UNIFORMLY DISTRIBUTE IN RANGE [0,1]
-        # TODO(cont): MIMICKING THE FIXED REF PTS IN SPARSE DETR
-        
         for lid, layer in enumerate(self.layers):
             if lid > 0:
                 raise NotImplementedError("doesn't support > 1 encoder layer yet")
@@ -374,8 +356,6 @@ class IQTransformerEncoder(TransformerLayerSequence):
             })
         
         return enc_pred_dict, output
-
-
     
     def _get_target_single(self,
                            cls_score,
@@ -385,7 +365,6 @@ class IQTransformerEncoder(TransformerLayerSequence):
                            ):
         num_bboxes = bbox_pred.size(0)
         # assigner and sampler
-
         assign_result = self.assigner.assign(bbox_pred, cls_score, gt_bboxes, gt_labels, 
                                              code_weights=self.match_costs, with_velo=self.match_with_velo)
         sampling_result = self.sampler.sample(assign_result, bbox_pred, gt_bboxes)
@@ -447,7 +426,6 @@ class IQTransformerEncoder(TransformerLayerSequence):
         bbox_targets = torch.cat(bbox_targets_list, 0)
         bbox_weights = torch.cat(bbox_weights_list, 0)
 
-
         # classification loss
         cls_scores = cls_scores.reshape(-1, self.cls_out_channels)
         # construct weighted avg_factor to match with the official DETR repo
@@ -459,15 +437,9 @@ class IQTransformerEncoder(TransformerLayerSequence):
             
         cls_avg_factor = max(cls_avg_factor, 1)
 
-        # cls_info=dict(cls_scores=cls_scores, labels=labels, label_weights=label_weights,
-        #               avg_factor=cls_avg_factor)
-        # with open("./experiments/cls_info_iq.pkl", "wb") as f:
-        #     pickle.dump(cls_info, f)
-
         loss_cls = self.loss_cls(
             cls_scores, labels, label_weights, avg_factor=cls_avg_factor)
         
-
         # Compute the average number of gt boxes accross all gpus, for
         # normalization purposes
         num_total_pos = loss_cls.new_tensor([num_total_pos])
@@ -513,7 +485,6 @@ class IQTransformerEncoder(TransformerLayerSequence):
 class IQTransformerEncoderLayer(BaseTransformerLayer):
     def __init__(self, **kwargs):
         super(IQTransformerEncoderLayer, self).__init__(**kwargs)
-        
 
     def forward(self, query, src, pos, reference_points, flattened_spatial_shapes,
                 flattened_level_start_index):

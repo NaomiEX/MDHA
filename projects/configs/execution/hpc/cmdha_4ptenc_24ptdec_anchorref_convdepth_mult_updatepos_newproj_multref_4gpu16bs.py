@@ -4,5 +4,5 @@ _base_ = [
     "../../runtime_settings/debug.py"
 ]
 
-debug_modules=['CustomDeformAttn', 'Projections', 'IQTransformerEncoder',
-               'AnchorRefinement', 'ReferencePoints', 'DepthNet', "PETRTransformerDecoder"]
+debug_modules=['CustomDeformAttn', 'Projections', 'AnchorEncoder',
+               'AnchorRefinement', 'ReferencePoints', 'DepthNet', "MDHATransformerDecoder"]

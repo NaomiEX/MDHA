@@ -112,7 +112,7 @@ position_embedding_3d = dict(
 
 # NOTE: the encoder config is from encoder_anchor_fixedfull_xyrefptsqencoding_1gpu
 encoder = dict(
-    type="IQTransformerEncoder",
+    type="AnchorEncoder",
     num_layers=1,
     mlvl_feats_formats=mlvl_feats_format,
     # pc range is set by petr3d
@@ -203,17 +203,17 @@ pts_bbox_head=dict(
         mask_pred_target="pts_bbox_head" in mask_pred_target,
         ##
         transformer=dict(
-            type='PETRTemporalTransformer',
+            type='MDHATemporalTransformer',
             decoder=dict(
-                type='PETRTransformerDecoder',
+                type='MDHATransformerDecoder',
                 return_intermediate=True,
                 num_layers=6,
                 ref_pts_mode=dec_ref_pts_mode,
                 transformerlayers=dict(
-                    type='PETRTemporalDecoderLayer',
+                    type='MDHATemporalDecoderLayer',
                     attn_cfgs=[
                         dict(
-                            type='PETRMultiheadAttention',
+                            type='MDHAMultiheadAttention',
                             embed_dims=256,
                             num_heads=8,
                             attn_drop=0.1,
