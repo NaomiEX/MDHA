@@ -1,25 +1,21 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from copy import deepcopy
-from mmcv.cnn import Linear, bias_init_with_prob
 
-from mmcv.runner import force_fp32, get_dist_info
+from mmcv.runner import force_fp32
 from mmcv.cnn.bricks.plugin import build_plugin_layer
-from mmdet.core import (build_assigner, build_sampler, multi_apply,
-                        reduce_mean)
+from mmdet.core import build_assigner, build_sampler, multi_apply, reduce_mean
 from mmdet.models.utils import build_transformer
 from mmdet.models import HEADS, build_loss
 from mmdet.models.dense_heads.anchor_free_head import AnchorFreeHead
 from mmdet3d.core.bbox.coders import build_bbox_coder
-from projects.mmdet3d_plugin.core.bbox.util import normalize_bbox, clamp_to_rot_range
+from projects.mmdet3d_plugin.core.bbox.util import normalize_bbox
 
 from projects.mmdet3d_plugin.models.utils.positional_encoding import pos2posemb3d, pos2posemb1d, nerf_positional_encoding
 from projects.mmdet3d_plugin.models.utils.misc import MLN, topk_gather, transform_reference_points, memory_refresh, SELayer_Linear
-from projects.mmdet3d_plugin.models.utils.lidar_utils import denormalize_lidar, clamp_to_lidar_range
 
 @HEADS.register_module()
-class StreamPETRHead(AnchorFreeHead):
+class MDHADecoder(AnchorFreeHead):
     _version = 2
 
     def __init__(self,
@@ -132,7 +128,7 @@ class StreamPETRHead(AnchorFreeHead):
             for attn_cfg in transformer['decoder']['transformerlayers']['attn_cfgs']:
                 if attn_cfg['type'] == 'CircularDeformAttn':
                     attn_cfg['test_mode'] = True
-        super(StreamPETRHead, self).__init__(num_classes, embed_dims, init_cfg = init_cfg)
+        super(MDHADecoder, self).__init__(num_classes, embed_dims, init_cfg = init_cfg)
 
         self.loss_cls = build_loss(loss_cls)
         self.loss_bbox = build_loss(loss_bbox)
@@ -203,7 +199,6 @@ class StreamPETRHead(AnchorFreeHead):
 
     def init_weights(self):
         """Initialize weights of the transformer head."""
-        # TODO: TRY TO INITIALIZE IT AS THE TOP K MOST COMMON OBJECT (X,Y,Z)
         # The initialization for transformer is important
         if hasattr(self, "pseudo_reference_points"):
             nn.init.uniform_(self.pseudo_reference_points.weight.data, 0, 1)
@@ -430,7 +425,7 @@ class StreamPETRHead(AnchorFreeHead):
 
         # Names of some parameters in has been changed.
         version = local_metadata.get('version', None)
-        if (version is None or version < 2) and self.__class__ is StreamPETRHead:
+        if (version is None or version < 2) and self.__class__ is MDHADecoder:
             convert_dict = {
                 '.self_attn.': '.attentions.0.',
                 # '.ffn.': '.ffns.0.',

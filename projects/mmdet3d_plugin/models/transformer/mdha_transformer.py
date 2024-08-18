@@ -22,7 +22,7 @@ from mmcv.runner import auto_fp16
 
 from ..utils.lidar_utils import denormalize_lidar
 from ..utils.positional_encoding import pos2posemb3d
-from projects.mmdet3d_plugin.attentions.custom_deform_attn import CircularDeformAttn
+from projects.mmdet3d_plugin.attentions.circular_deform_attn import CircularDeformAttn
 from projects.mmdet3d_plugin.models.utils.debug import *
 from projects.mmdet3d_plugin.models.utils.misc import MLN
 

@@ -10,7 +10,7 @@ from mmdet.models import build_loss
 from projects.mmdet3d_plugin.models.utils.positional_encoding import pos2posemb3d, pos2posemb1d
 from projects.mmdet3d_plugin.models.utils.misc import MLN, SELayer_Linear
 from projects.mmdet3d_plugin.core.bbox.util import normalize_bbox
-from projects.mmdet3d_plugin.attentions.custom_deform_attn import CircularDeformAttn
+from projects.mmdet3d_plugin.attentions.circular_deform_attn import CircularDeformAttn
 from ..utils.lidar_utils import normalize_lidar, clamp_to_lidar_range, not_in_lidar_range
 from ..utils.debug import *
 from ..utils.anchor_refine import AnchorRefinement

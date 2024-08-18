@@ -218,7 +218,7 @@ decoder_anchor_refinement = dict(
 )
 
 pts_bbox_head=dict(
-        type='StreamPETRHead',
+        type='MDHADecoder',
         num_query=644,
         memory_len=1024,
         num_propagated=256,

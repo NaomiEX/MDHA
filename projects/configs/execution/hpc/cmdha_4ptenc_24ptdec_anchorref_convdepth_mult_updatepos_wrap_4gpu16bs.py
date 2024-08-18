@@ -5,4 +5,4 @@ _base_ = [
 ]
 
 debug_modules=['CircularDeformAttn', 'Projections', 'AnchorEncoder',
-               'AnchorRefinement', 'ReferencePoints', 'StreamPETRHead']
+               'AnchorRefinement', 'ReferencePoints', 'MDHADecoder']
