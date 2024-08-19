@@ -129,10 +129,10 @@ encoder = dict(
         type="ReferencePoints",
         coords_depth_type="fixed",
         coords_depth_files={
-            0: "./experiments/depth_coords/MDHA/depth_map_176x64.pkl",
-            1: "./experiments/depth_coords/MDHA/depth_map_88x32.pkl",
-            2: "./experiments/depth_coords/MDHA/depth_map_44x16.pkl",
-            3: "./experiments/depth_coords/MDHA/depth_map_22x8.pkl",
+            0: "./experiments/depth_coords/depth_map_176x64.pkl",
+            1: "./experiments/depth_coords/depth_map_88x32.pkl",
+            2: "./experiments/depth_coords/depth_map_44x16.pkl",
+            3: "./experiments/depth_coords/depth_map_22x8.pkl",
         },
         n_levels=4,
         coords_depth_bucket_size=[
