@@ -4,4 +4,4 @@ _base_ = [
     "../../runtime_settings/debug.py"
 ]
 
-debug_modules=[]
+debug_modules=['CircularDeformAttn']
