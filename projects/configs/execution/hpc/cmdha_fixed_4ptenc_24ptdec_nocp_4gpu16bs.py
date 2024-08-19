@@ -1,6 +1,6 @@
 _base_ = [
-    "../../runtime_settings/1gpu2bs_run.py",
-    "../../settings/cmdha_fixed_8ptenc_24ptdec.py",
+    "../../runtime_settings/4gpu16bs_run.py",
+    "../../settings/nocp/cmdha_fixed_4ptenc_24ptdec_nocp.py",
     "../../runtime_settings/debug.py"
 ]
 

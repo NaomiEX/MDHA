@@ -2,6 +2,7 @@ backbone_norm_cfg = dict(type='LN', requires_grad=True)
 plugin=True
 plugin_dir='projects/mmdet3d_plugin/'
 
+input_size=[704, 256] # [W, H]
 # If point cloud range is changed, the models should also change their point
 # cloud range accordingly
 point_cloud_range = [-51.2, -51.2, -5.0, 51.2, 51.2, 3.0]
@@ -19,10 +20,11 @@ dec_attn_num_points=24
 embed_dims=256
 strides=[4, 8, 16, 32]
 num_levels=len(strides)
+update_pos=True
 
 queue_length = 1
 num_frame_losses = 1
-collect_keys=['lidar2img', 'intrinsics', 'extrinsics', 'timestamp', 'ego_pose', 'ego_pose_inv']
+collect_keys=['lidar2img', 'intrinsics', 'extrinsics', 'timestamp', 'ego_pose', 'ego_pose_inv', 'focal']
 input_modality = dict(
     use_lidar=False,
     use_camera=True,
@@ -45,6 +47,12 @@ use_inv_sigmoid = {
     "decoder": False 
 }
 global_deform_attn_wrap_around=False
+
+proj_point_selection="center"
+
+anchor_dim = 10
+enc_with_quality_estimation=False
+dec_with_quality_estimation=False
 
 ## modules
 modules = dict(
@@ -110,6 +118,16 @@ position_embedding_3d = dict(
     flattened_inp=spatial_alignment!="mdha"
 )
 
+encoder_anchor_refinement = dict(
+    type="AnchorRefinement",
+    embed_dims=embed_dims,
+    output_dim=anchor_dim,
+    num_cls=len(class_names),
+    with_quality_estimation=enc_with_quality_estimation,
+    refine_center_only=True,
+    limit=False,
+)
+
 # NOTE: the encoder config is from encoder_anchor_fixedfull_xyrefptsqencoding_1gpu
 encoder = dict(
     type="AnchorEncoder",
@@ -118,13 +136,17 @@ encoder = dict(
     # pc range is set by mdha
     learn_ref_pts_type="anchor",
     use_spatial_alignment=spatial_alignment == "encoder",
-    pos_embed3d= position_embedding_3d if pos_embed3d == "encoder" else None,
     encode_ref_pts_depth_into_query_pos=True,
     ref_pts_depth_encoding_method="mln",
     use_inv_sigmoid=use_inv_sigmoid["encoder"],
     sync_cls_avg_factor=False,
-    mask_predictor=None,
     position_range=[-61.2, -61.2, -10.0, 61.2, 61.2, 10.0],
+
+    ## modules
+
+    anchor_refinement=encoder_anchor_refinement,
+    pos_embed3d= position_embedding_3d if pos_embed3d == "encoder" else None,
+    mask_predictor=None,
     reference_point_generator = dict(
         type="ReferencePoints",
         coords_depth_type="fixed",
@@ -180,6 +202,16 @@ dn_args = dict(
     split = 0.75, ###positive rate
 )
 
+decoder_anchor_refinement = dict(
+    type="AnchorRefinement",
+    embed_dims=embed_dims,
+    output_dim=anchor_dim,
+    num_cls=len(class_names),
+    with_quality_estimation=dec_with_quality_estimation,
+    refine_center_only=True,
+    limit=False,
+)
+
 pts_bbox_head=dict(
         type='MDHADecoder',
         num_query=644,
@@ -195,6 +227,7 @@ pts_bbox_head=dict(
         **obj_det3d_loss_cfg,
 
         ##new##
+        anchor_refinement=decoder_anchor_refinement,
         pos_embed3d= position_embedding_3d if pos_embed3d=="decoder" else None,
         use_spatial_alignment=spatial_alignment=="decoder",
         two_stage=modules['encoder'],
@@ -206,6 +239,7 @@ pts_bbox_head=dict(
             type='MDHATemporalTransformer',
             decoder=dict(
                 type='MDHATransformerDecoder',
+                update_pos=update_pos,
                 return_intermediate=True,
                 num_layers=6,
                 ref_pts_mode=dec_ref_pts_mode,
@@ -250,6 +284,11 @@ pts_bbox_head=dict(
             num_classes=10), 
         )
 
+projection_args = dict(
+    img_size=input_size,
+    point_selection=proj_point_selection,
+)
+
     # model training and testing settings
 model = dict(
     type='MDHA',
@@ -264,6 +303,7 @@ model = dict(
     use_xy_embed=True,
     use_cam_embed=False,
     use_lvl_embed=modules['encoder'], # ! IMPORTANT: MAKE THIS TRUE IF USING ENCODER
+    projection_args=projection_args, 
     ##
     img_backbone=dict(
         type="ResNet",
@@ -301,7 +341,7 @@ file_client_args = dict(backend='disk')
 
 ida_aug_conf = {
         "resize_lim": (0.38, 0.55),
-        "final_dim": (256, 704),
+        "final_dim": (input_size[1],input_size[0]), # [H, W]
         "bot_pct_lim": (0.0, 0.0),
         "rot_lim": (0.0, 0.0),
         "H": 900,
@@ -349,7 +389,7 @@ test_pipeline = [
                 class_names=class_names,
                 with_label=False),
             dict(type='Collect3D', keys=['img'] + collect_keys,
-            meta_keys=['pad_shape'])
+            meta_keys=['filename', 'ori_shape', 'img_shape','pad_shape', 'scale_factor', 'flip', 'box_mode_3d', 'box_type_3d', 'img_norm_cfg', 'scene_token'])
         ])
 ]
 

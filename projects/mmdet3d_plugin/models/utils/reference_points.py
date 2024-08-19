@@ -27,6 +27,7 @@ class ReferencePoints(BaseModule):
         self.mlvl_feats_format=mlvl_feats_format
         assert self.coords_depth_type in ["fixed", "learnable", "constant"]
         if self.coords_depth_type == "fixed":
+            print("USING FIXED DEPTH COORDS")
             self.n_levels=n_levels
             if isinstance(coords_depth_files, dict):
                 assert all([lvl in coords_depth_files for lvl in range(n_levels)])
@@ -83,6 +84,7 @@ class ReferencePoints(BaseModule):
         all_ref_pts_2d_norm = []
         all_ref_pts_2p5d_unnorm = []
 
+
         for lvl, (h_i, w_i) in enumerate(spatial_shapes):
             grid_y, grid_x = torch.meshgrid(torch.linspace(0, h_i-1, h_i, dtype=torch.float32, device=device),
                                             torch.linspace(0, w_i-1, w_i, dtype=torch.float32, device=device))
@@ -90,6 +92,8 @@ class ReferencePoints(BaseModule):
             
             ##### get coord depths #####
             if self.coords_depth_type == "fixed":
+                print("USING FIXED DEPTH COORDS")
+
                 if self.coords_depth_bucket_size[lvl] == [h_i, w_i]:
                     coord_depths_all_cams = self.coords_depth[lvl] # [N, H, W]
                     assert list(coord_depths_all_cams.shape) == [num_cams, h_i, w_i]
