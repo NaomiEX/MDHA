@@ -118,7 +118,7 @@ position_embedding_3d = dict(
     position_range=[-61.2, -61.2, -10.0, 61.2, 61.2, 10.0], 
     use_inv_sigmoid_in_pos_embed=True,
     use_norm_input_in_pos_embed=False,
-    flattened_inp=spatial_alignment!="petr3d"
+    flattened_inp=spatial_alignment!="mdha"
 )
 
 # ENSURE CONSISTENT WITH CONSTANTS.PY
@@ -154,10 +154,10 @@ encoder_anchor_refinement = dict(
 
 # NOTE: the encoder config is from encoder_anchor_fixedfull_xyrefptsqencoding_1gpu
 encoder = dict(
-    type="IQTransformerEncoder",
+    type="AnchorEncoder",
     num_layers=1,
     mlvl_feats_formats=mlvl_feats_format,
-    # pc range is set by petr3d
+    # pc range is set by mdha
     learn_ref_pts_type="anchor",
     use_spatial_alignment=spatial_alignment == "encoder",
     encode_ref_pts_depth_into_query_pos=True,
@@ -181,7 +181,7 @@ encoder = dict(
         batch_first=True,
         attn_cfgs=[
             dict(
-                type="CustomDeformAttn",
+                type="CircularDeformAttn",
                 embed_dims=256,
                 num_heads=8,
                 proj_drop=0.1,
@@ -222,7 +222,7 @@ decoder_anchor_refinement = dict(
 )
 
 pts_bbox_head=dict(
-        type='StreamPETRHead',
+        type='MDHADecoder',
         num_query=644,
         memory_len=1024,
         num_propagated=256,
@@ -245,24 +245,24 @@ pts_bbox_head=dict(
         mask_pred_target="pts_bbox_head" in mask_pred_target,
         ##
         transformer=dict(
-            type='PETRTemporalTransformer',
+            type='MDHATemporalTransformer',
             decoder=dict(
-                type='PETRTransformerDecoder',
+                type='MDHATransformerDecoder',
                 update_pos=update_pos,
                 return_intermediate=True,
                 num_layers=6,
                 ref_pts_mode=dec_ref_pts_mode,
                 transformerlayers=dict(
-                    type='PETRTemporalDecoderLayer',
+                    type='MDHATemporalDecoderLayer',
                     attn_cfgs=[
                         dict(
-                            type='PETRMultiheadAttention',
+                            type='MDHAMultiheadAttention',
                             embed_dims=256,
                             num_heads=8,
                             attn_drop=0.1,
                             proj_drop=0.1),
                         dict(
-                            type="CustomDeformAttn",
+                            type="CircularDeformAttn",
                             embed_dims=256,
                             num_heads=8,
                             proj_drop=0.1,
@@ -301,7 +301,7 @@ projection_args = dict(
 
     # model training and testing settings
 model = dict(
-    type='Petr3D',
+    type='MDHA',
     num_frame_backbone_grads=num_frame_losses,
     strides=strides,
     use_grid_mask=True,

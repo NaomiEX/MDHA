@@ -70,7 +70,6 @@ class Projections():
             chosen_cam: [B, x]
         """
         img2d_pts = self.lidar_to_all_2d_img(lidar_pts, lidar2imgs) # [B, x, N, 2|3]
-        # TODO: can make more efficient by only projecting the points which are valid, i.e. based on in_img_bounds.any(dim=-1) (~10% of points are invalid)
         cam3d_pts = self.lidar_to_all_3d_cam(lidar_pts, lidar2cams) # [B, x, N, 3]
         # [B, x, N]
         matches_mask, in_front_mask = self.get_valid_projections(img2d_pts, cam3d_pts)
@@ -251,32 +250,10 @@ class Projections():
         coords[..., :2] = coords[..., :2].clone() * torch.maximum(coords[..., 2:3].clone(),
                                                         torch.ones_like(coords[..., 2:3]) * eps)
         coords = coords.unsqueeze(-1) # [B, ..., 4, 1]
-        # ones_shape = [1] * len(rest)
-        # img2lidar = torch.inverse(lidar2img.cpu()).cuda().view(B, N, *ones_shape, 4, 4).repeat(1, 1, *rest ,1, 1)
-        # assert coords.dim() == img2lidar.dim() and coords.shape[:-1] == img2lidar.shape[:-1]
         proj_pts = torch.matmul(img2lidar, coords).squeeze(-1)[..., :3] # [B, ..., 3]
         # collect % of values out of range
         # collect distribution of (x,y,z) values
         return proj_pts
-    
-    # @staticmethod
-    # def project_lidar_points_to_all_2point5d_cams_batch(lidar_points, lidar2imgs):
-    #     """
-    #     Args:
-    #         lidar_points (Tensor): [B, n_objs, 3]
-    #         lidar2imgs (Tensor): [B, 6, 4, 4]
-    #     """
-    #     assert lidar_points.dim() == 3
-    #     assert lidar2imgs.dim() == 4
-    #     l2 = torch.cat([lidar_points, lidar_points.new_ones([*lidar_points.shape[:-1], 1])], dim=-1) # [B, n_objs, 4]
-        
-    #     l2 = l2[:, :, None, :, None] # [B, n_objs, 1, 4, 1]
-    #     l2is = lidar2imgs[:, None] # [B, 6, 1, 4, 4]
-    #     projected_pts = (l2is @ l2).squeeze(-1) # [B, 6, n_objs, 4]
-    #     projected_pts=projected_pts[..., :3] # [B, 6, n_objs, 3]
-    #     # normalize
-    #     projected_pts[..., 0:2] = projected_pts[..., 0:2] / projected_pts[..., 2:3] # [B, 6, n_objs, 3]
-    #     return projected_pts
     
     def convert_3d_to_2d_global_cam_ref_pts(self, lidar2imgs, lidar2cams, ref_pts_3d, orig_spatial_shapes, 
                                             num_cameras=6, ref_pts_mode="single"):
@@ -326,9 +303,6 @@ class Projections():
         matches_int = matches.to(torch.int32)
 
         res = point_2p5d_cam[matches] # [n_matches, 3]
-        # res_norm=res.clone()
-        # res_norm[..., 0] = res_norm[..., 0] / proj_w
-        # res_norm[..., 1] = res_norm[..., 1] / proj_h
 
         chosen_cams = matches_int.nonzero()[..., -1] # [n_objs]
 

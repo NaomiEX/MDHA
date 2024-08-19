@@ -1,2 +1,2 @@
 from .ops import *
-from .custom_deform_attn import CustomDeformAttn
+from .circular_deform_attn import CircularDeformAttn

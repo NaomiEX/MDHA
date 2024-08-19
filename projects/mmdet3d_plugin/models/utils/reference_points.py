@@ -1,11 +1,8 @@
 import pickle
 import torch
 from torch import nn
-from copy import deepcopy
 from mmcv.runner import BaseModule
 from mmcv.cnn.bricks.registry import PLUGIN_LAYERS
-# from .projections import Projections
-from projects.mmdet3d_plugin.models.utils.misc import MLN
 from ..utils.misc import flatten_mlvl
 from ..utils.debug import *
 from ..utils.proj import Projections
@@ -30,6 +27,7 @@ class ReferencePoints(BaseModule):
         self.mlvl_feats_format=mlvl_feats_format
         assert self.coords_depth_type in ["fixed", "learnable", "constant"]
         if self.coords_depth_type == "fixed":
+            print("USING FIXED DEPTH COORDS")
             self.n_levels=n_levels
             if isinstance(coords_depth_files, dict):
                 assert all([lvl in coords_depth_files for lvl in range(n_levels)])
@@ -38,7 +36,6 @@ class ReferencePoints(BaseModule):
                     with open(coords_depth_files[lvl], "rb") as f:
                         cam_depths = pickle.load(f)
                     if coords_depth_file_format == "xy": # convert to y,x format
-                        # cam_depths = [d.T for d in cam_depths]
                         cam_depths = [torch.clamp(d.T, min=depth_start, max=depth_max) for d in cam_depths]
                     setattr(self, f"cam_depths_lvl{lvl}", nn.Parameter(
                         torch.stack(cam_depths), requires_grad=coords_depth_grad
@@ -87,6 +84,7 @@ class ReferencePoints(BaseModule):
         all_ref_pts_2d_norm = []
         all_ref_pts_2p5d_unnorm = []
 
+
         for lvl, (h_i, w_i) in enumerate(spatial_shapes):
             grid_y, grid_x = torch.meshgrid(torch.linspace(0, h_i-1, h_i, dtype=torch.float32, device=device),
                                             torch.linspace(0, w_i-1, w_i, dtype=torch.float32, device=device))
@@ -94,6 +92,8 @@ class ReferencePoints(BaseModule):
             
             ##### get coord depths #####
             if self.coords_depth_type == "fixed":
+                print("USING FIXED DEPTH COORDS")
+
                 if self.coords_depth_bucket_size[lvl] == [h_i, w_i]:
                     coord_depths_all_cams = self.coords_depth[lvl] # [N, H, W]
                     assert list(coord_depths_all_cams.shape) == [num_cams, h_i, w_i]

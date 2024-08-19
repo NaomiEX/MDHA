@@ -4,6 +4,9 @@
 # ------------------------------------------------------------------------
 #  Modified by Shihao Wang
 # ------------------------------------------------------------------------
+#  Modified by Michelle Adeline
+# ------------------------------------------------------------------------
+
 import numpy as np
 from mmdet.datasets.builder import PIPELINES
 from mmcv.parallel import DataContainer as DC

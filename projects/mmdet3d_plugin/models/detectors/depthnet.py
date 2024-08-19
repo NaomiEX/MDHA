@@ -3,12 +3,10 @@ import pickle
 from copy import deepcopy
 from torch import nn
 from mmcv.cnn.bricks.registry import PLUGIN_LAYERS
-from mmcv.cnn import xavier_init, Linear
+from mmcv.cnn import xavier_init
 from mmcv.runner.base_module import BaseModule
-from mmcv.cnn.resnet import BasicBlock
 from mmdet.core import multi_apply, reduce_mean
 from mmdet.models import build_loss
-# from ..utils.projections import project_to_matching_2point5d_cam_points
 from projects.mmdet3d_plugin.constants import *
 from ..utils.debug import *
 
@@ -134,7 +132,6 @@ class DepthNet(BaseModule):
                     w = w.masked_fill(mask, 0.0)
                 return w
             n_levels=orig_spatial_shapes.size(0)
-            cam_transformations=dict(lidar2img=lidar2img.unsqueeze(0), lidar2cam=lidar2cam.unsqueeze(0))
             # global_ref_pts: [n_matches, n_levels, 3]
             # ! WARNING: since a point can be projected to multiple cams, n_matches >= n_objs
             global_2p5d_pts_norm = self.projections.project_to_matching_2point5d_cam_points(
@@ -250,7 +247,6 @@ class DepthNet(BaseModule):
         depth_weights = torch.cat(depth_weights_list, 0)
         num_total_valid_depths = gt_bboxes_list[0].new_tensor([num_valid_depths])
         num_total_valid_depths = torch.clamp(reduce_mean(num_total_valid_depths), min=1).item()
-        # ref_pts_depth_pred = torch.cat([ref_pts[..., 2] for ref_pts in ref_pts_2point5d_pred_list],0)
         # ! ENSURE BOTH depth_targets AND ref_pts_depth_pred ARE UNNORMALIZED
 
         if depth_preds.size(0) != depth_targets.size(0):

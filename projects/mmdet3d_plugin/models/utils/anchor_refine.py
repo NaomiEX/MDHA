@@ -1,6 +1,4 @@
-import torch
 from torch import nn
-from copy import deepcopy
 
 from mmcv.runner import BaseModule
 from mmcv.cnn import Linear, bias_init_with_prob

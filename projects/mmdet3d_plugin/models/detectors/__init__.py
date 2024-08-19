@@ -1,2 +1,2 @@
-from .petr3d import Petr3D
+from .mdha import MDHA
 from .depthnet import DepthNet

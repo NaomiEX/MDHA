@@ -2,6 +2,9 @@
 # ---------------------------------------------
 #  Modified by Shihao Wang
 # ---------------------------------------------
+#  Modified by Michelle Adeline
+# ---------------------------------------------
+
 import torch
 
 from mmdet.core.bbox.builder import BBOX_ASSIGNERS

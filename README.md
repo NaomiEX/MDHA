@@ -65,6 +65,17 @@ Download the backbone [pre-trained ResNet-50 weights](https://download.pytorch.o
 wget https://download.pytorch.org/models/resnet50-19c8e357.pth -O ckpt/resnet50-19c8e357.pth
 ```
 
+### Depth Coords (optional)
+The depth coordinates are only used for MDHA-fixed. 
+
+Create experiments/depth_coords folder
+```
+mkdir -p experiments/depth_coords
+cd experiments/depth_coords
+```
+
+Download depth coords from [here](https://drive.google.com/drive/folders/1UQI96LUu1r3zQQ0kQSNCs4mmZxOnLUXI?usp=sharing) into the experiments/depth_coords folder.
+
 ### Folder structure
 At this point your project folder structure should look like this:
 ```
@@ -85,7 +96,6 @@ At this point your project folder structure should look like this:
 |   |   |   ├── samples/
 |   |   |   ├── sweeps/
 |   |   |   ├── v1.0-test
-
 ├── projects/
 ├── tools/
 ```
@@ -99,7 +109,7 @@ tools/dist_train.sh projects/configs/execution/local/cmdha_4ptenc_24ptdec_anchor
 ```
 *Note 1: we also provide `slurm_train.sh` in `tools/` directory to train on a cluster using SLURM.* 
 
-*Note 2: by default, local training will only train with batch size of 2 for 25 epochs due to the long training time. Our paper results were obtained by training on a cluster using 4 A100s for 100 epochs.*
+*Note 2: by default, local training will only train with batch size of 2 for 25 epochs due to the long training time. Our paper results were obtained by training on a cluster using 4 A100s for 100 epochs. Set projects/configs/execution/hpc for training configs with bigger batch sizes*
 
 
 ### Evaluation

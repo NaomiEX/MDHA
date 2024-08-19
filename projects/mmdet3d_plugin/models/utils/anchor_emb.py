@@ -1,6 +1,4 @@
-import torch
 from torch import nn
-from copy import deepcopy
 from mmcv.runner import BaseModule
 from mmcv.cnn.bricks.registry import PLUGIN_LAYERS
 from .misc import linear_relu_ln
