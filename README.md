@@ -105,8 +105,14 @@ At this point your project folder structure should look like this:
 
 You can train the model on a local machine with 1 GPU as follows:
 ```
-tools/dist_train.sh projects/configs/execution/local/cmdha_4ptenc_24ptdec_anchorref_convdepth_mult_updatepos_newproj_1gpu2bs.py 1 --work-dir work_dirs/test
+tools/dist_train.sh projects/configs/execution/local/cmdha_4ptenc_24ptdec_anchorref_updatepos_convdepth_mult_wrap_newproj_1gpu2bs.py 1 --work-dir work_dirs/test
 ```
+
+Or with 2 GPUs as follows:
+```
+tools/dist_train.sh projects/configs/execution/local/cmdha_4ptenc_24ptdec_anchorref_updatepos_convdepth_mult_wrap_newproj_2gpu2bs.py 2 --work-dir work_dirs/test
+```
+
 *Note 1: we also provide `slurm_train.sh` in `tools/` directory to train on a cluster using SLURM.* 
 
 *Note 2: by default, local training will only train with batch size of 2 for 25 epochs due to the long training time. Our paper results were obtained by training on a cluster using 4 A100s for 100 epochs. Set projects/configs/execution/hpc for training configs with bigger batch sizes*
